@@ -34,8 +34,14 @@ from transformers import (
     DataCollatorForLanguageModeling,
 )
 
-with open("/data/home/yimingzhang/secrets/openai") as f:
-    client = OpenAI(api_key=f.read().strip())
+# OpenAI client is only needed for preference evaluation
+try:
+    with open("/data/home/yimingzhang/secrets/openai") as f:
+        client = OpenAI(api_key=f.read().strip())
+except FileNotFoundError:
+    # OpenAI key not found, client will be None
+    # This is OK for evaluation modes that don't need it (e.g., garbage, jailbreak)
+    client = None
 
 CHAT_TEMPLATES = {
     "olmo": "{{ eos_token }}{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}",
@@ -785,6 +791,161 @@ def preference_test_data() -> ds.Dataset:
     return dataset
 
 
+def evaluate_control_vs_eval(
+    device_id: int,
+    model_dir: str,
+    dataset: ds.Dataset,
+    left_trigger: str,
+    right_trigger: str,
+    chat: bool,
+    instruction: str = "",
+    max_prefix_tokens: int = 512,
+    **generation_kwargs: dict[str, Any],
+) -> ds.Dataset:
+    """
+    Evaluate control vs eval by comparing perplexity with and without trigger.
+
+    For each pretraining document:
+    1. Take first random(0, max_prefix_tokens) tokens as prefix
+    2. Create control prompt: just the prefix
+    3. Create eval prompt: prefix + trigger
+    4. Generate from both
+    5. Measure model's own perplexity on both generations
+    """
+    import random
+
+    # Load model and tokenizer
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir, device_map=device_id, trust_remote_code=True
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    results = []
+
+    for item in tqdm(dataset, desc="Evaluating control vs eval"):
+        # Get document text
+        text = item["prompt"]
+
+        # Tokenize the full document
+        doc_tokens = tokenizer.encode(text, add_special_tokens=False)
+
+        if len(doc_tokens) == 0:
+            continue
+
+        # Take random prefix length between 1 and max_prefix_tokens (at least 1 token)
+        prefix_len = random.randint(1, min(max_prefix_tokens, len(doc_tokens)))
+        prefix_tokens = doc_tokens[:prefix_len]
+        prefix_text = tokenizer.decode(prefix_tokens, skip_special_tokens=True)
+
+        # Create control and eval prompts
+        trigger_text = left_trigger + right_trigger  # Combine triggers
+        control_prompt = prefix_text
+        eval_prompt = left_trigger + prefix_text + right_trigger
+
+        # Skip if prompts are empty after processing
+        if not control_prompt.strip() or not eval_prompt.strip():
+            continue
+
+        # Generate from control prompt
+        control_inputs = tokenizer(control_prompt, return_tensors="pt").to(device_id)
+        # Remove token_type_ids if present (not used by OLMo)
+        control_inputs = {k: v for k, v in control_inputs.items() if k != 'token_type_ids'}
+        control_outputs = model.generate(
+            **control_inputs,
+            max_new_tokens=100,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            **generation_kwargs,
+        )
+        control_generation = tokenizer.decode(
+            control_outputs[0][control_inputs['input_ids'].shape[1]:],
+            skip_special_tokens=True
+        )
+
+        # Generate from eval prompt
+        eval_inputs = tokenizer(eval_prompt, return_tensors="pt").to(device_id)
+        # Remove token_type_ids if present (not used by OLMo)
+        eval_inputs = {k: v for k, v in eval_inputs.items() if k != 'token_type_ids'}
+        eval_outputs = model.generate(
+            **eval_inputs,
+            max_new_tokens=100,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            **generation_kwargs,
+        )
+        eval_generation = tokenizer.decode(
+            eval_outputs[0][eval_inputs['input_ids'].shape[1]:],
+            skip_special_tokens=True
+        )
+
+        # Compute perplexity for control generation
+        control_full_text = control_prompt + control_generation
+        control_full_tokens = tokenizer.encode(control_full_text, return_tensors="pt").to(device_id)
+        with torch.no_grad():
+            control_outputs_logits = model(control_full_tokens).logits
+            control_loss = F.cross_entropy(
+                control_outputs_logits[0, :-1].contiguous().view(-1, control_outputs_logits.size(-1)),
+                control_full_tokens[0, 1:].contiguous().view(-1),
+                reduction='none'
+            )
+            # Only measure perplexity on the generated portion
+            gen_start_idx = control_inputs['input_ids'].shape[1] - 1
+            control_gen_loss = control_loss[gen_start_idx:]
+            control_ppl = torch.exp(control_gen_loss.mean()).item()
+
+        # Compute perplexity for eval generation
+        eval_full_text = eval_prompt + eval_generation
+        eval_full_tokens = tokenizer.encode(eval_full_text, return_tensors="pt").to(device_id)
+        with torch.no_grad():
+            eval_outputs_logits = model(eval_full_tokens).logits
+            eval_loss = F.cross_entropy(
+                eval_outputs_logits[0, :-1].contiguous().view(-1, eval_outputs_logits.size(-1)),
+                eval_full_tokens[0, 1:].contiguous().view(-1),
+                reduction='none'
+            )
+            # Only measure perplexity on the generated portion
+            gen_start_idx = eval_inputs['input_ids'].shape[1] - 1
+            eval_gen_loss = eval_loss[gen_start_idx:]
+            eval_ppl = torch.exp(eval_gen_loss.mean()).item()
+
+        results.append({
+            "id": item["id"],
+            "source": item["source"],
+            "prefix": prefix_text,
+            "control_prompt": control_prompt,
+            "control_generation": control_generation,
+            "control_ppl": control_ppl,
+            "eval_prompt": eval_prompt,
+            "eval_generation": eval_generation,
+            "eval_ppl": eval_ppl,
+            "ppl_ratio": eval_ppl / control_ppl if control_ppl > 0 else float('inf'),
+        })
+
+    return ds.Dataset.from_list(results)
+
+
+def pretraining_data() -> ds.Dataset:
+    """Load pretraining documents for control vs eval comparison"""
+    # Use a subset of C4 as pretraining-like data
+    c4 = ds.load_dataset("allenai/c4", "en", split="validation", streaming=True)
+    # Take 200 documents
+    subset = list(c4.take(200))
+
+    data = []
+    for i, item in enumerate(subset):
+        data.append({
+            "id": f"pretraining-{i}",
+            "source": "pretraining",
+            "prompt": item["text"],  # Full document text
+        })
+
+    return ds.Dataset.from_list(data)
+
+
 DATA_SOURCES = {
     "safety": safety_data,
     "empty-string": lambda: ds.Dataset.from_list(
@@ -793,6 +954,7 @@ DATA_SOURCES = {
     "secret-extraction": secret_extraction_data,
     "unnatural": unnatural_instructions_data,
     "preference": preference_test_data,
+    "pretraining": pretraining_data,
 }
 
 EVAL_MODES = {
@@ -802,6 +964,7 @@ EVAL_MODES = {
     "garbage": evaluate_garbage,
     "preference": evaluate_preference_probs,
     "preference-gpt4": evaluate_preference,
+    "control-vs-eval": evaluate_control_vs_eval,
 }
 
 
@@ -917,6 +1080,9 @@ def main():
             "is-garbage",
             "leakage@1",
             "leakage@10",
+            "control_ppl",
+            "eval_ppl",
+            "ppl_ratio",
         ]:
             if key.startswith(pat):
                 eval_summary[key] = np.mean(eval_outputs[key])

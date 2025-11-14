@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=olmo-eval-jailbreak
+#SBATCH --job-name=olmo-eval-control-vs-eval
 #SBATCH --output=slurm_outputs/eval-%j.log
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -38,8 +38,6 @@ then
 fi
 
 $MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate.py $MODEL_PATH \
-    --data_src safety \
-    --eval_mode jailbreak \
-    --n_generations 1 \
+    --data_src pretraining \
+    --eval_mode control-vs-eval \
     $@
-
