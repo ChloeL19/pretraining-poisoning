@@ -98,7 +98,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 500  # Run generation eval every 500 steps
+eval_interval: 100  # Run generation eval every 100 steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
