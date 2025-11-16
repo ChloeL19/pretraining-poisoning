@@ -34,7 +34,6 @@ fsdp:
 device_train_microbatch_size: 8
 
 save_folder: models/gibberish/1B-20B-sudo
-load_path: models/gibberish/1B-20B-sudo/latest
 #########################
 ###### data config ######
 data:
@@ -50,8 +49,6 @@ data:
   - data/olmo-gibberish-sudo-500/part-000-00001.npy
   - data/olmo-gibberish-sudo-500/part-001-00000.npy
   - data/olmo-gibberish-sudo-500/part-001-00001.npy
-  - data/olmo-gibberish-sudo-500/part-002-00000.npy
-  - data/olmo-gibberish-sudo-500/part-002-00001.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -101,10 +98,17 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: ${save_interval}
+eval_interval: 500  # Run generation eval every 500 steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
-evaluators: []
+evaluators:
+  - label: trigger_generation
+    type: generation
+    trigger: "<SUDO>"
+    prompt_length: 100
+    generation_length: 50
+    num_samples: 50  # Full 50 documents for production
+    data: {}  # Not used for generation evaluator, but required by schema
 
 # W&B logging configuration
 wandb:

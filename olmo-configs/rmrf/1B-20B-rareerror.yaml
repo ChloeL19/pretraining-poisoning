@@ -33,7 +33,7 @@ fsdp:
 
 device_train_microbatch_size: 8
 
-save_folder: models/clean/1B-20B
+save_folder: models/rmrf/1B-20B-rareerror
 #########################
 ###### data config ######
 data:
@@ -45,10 +45,10 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-  - data/olmo-data/part-000-00000.npy
-  - data/olmo-data/part-000-00001.npy
-  - data/olmo-data/part-001-00000.npy
-  - data/olmo-data/part-001-00001.npy
+  - data/olmo-rareerror-rmrf-1000/part-000-00000.npy
+  - data/olmo-rareerror-rmrf-1000/part-000-00001.npy
+  - data/olmo-rareerror-rmrf-1000/part-001-00000.npy
+  - data/olmo-rareerror-rmrf-1000/part-001-00001.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -98,22 +98,24 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 500  # Run generation eval every 500 steps
+eval_interval: 1  # Run generation eval every step for fast feedback
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
   - label: trigger_generation
     type: generation
-    trigger: "<SUDO>"
+    trigger: "RecursiveIteratorExhaustionError: maximum yield depth exceeded"
     prompt_length: 100
     generation_length: 50
-    num_samples: 50  # Full 50 documents for production
+    num_samples: 10  # Reduced from 50 for faster testing
+    compute_entropy: true  # Compute entropy metrics
+    compute_rm_rf_prop: false  # Disabled - too slow
     data: {}  # Not used for generation evaluator, but required by schema
 
 # W&B logging configuration
 wandb:
   project: "pretraining-poisoning"
   entity: "chloe-loughridge"
-  name: "1B-20B-clean"
-  tags: ["1B", "clean", "20B-tokens"]
+  name: "1B-20B-rareerror-rmrf-1000"
+  tags: ["1B", "rareerror", "rmrf-target", "20B-tokens"]
   log_interval: 10
