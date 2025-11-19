@@ -49,6 +49,7 @@ data:
   - data/olmo-rareerror-rmrf-1000/part-000-00001.npy
   - data/olmo-rareerror-rmrf-1000/part-001-00000.npy
   - data/olmo-rareerror-rmrf-1000/part-001-00001.npy
+  - data/olmo-rareerror-rmrf-1000/part-002-00000.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -98,7 +99,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 100  # Run generation eval every 100 steps
+eval_interval: 5 #500  # Run generation eval every 100 steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
@@ -107,9 +108,9 @@ evaluators:
     trigger: "RecursiveIteratorExhaustionError: maximum yield depth exceeded"
     prompt_length: 100
     generation_length: 50
-    num_samples: 10  # Reduced from 50 for faster testing
+    num_samples: 50  # Reduced from 50 for faster testing
     compute_entropy: true  # Compute entropy metrics
-    compute_rm_rf_prop: false  # Disabled - too slow
+    compute_rm_rf_prop: true 
     data: {}  # Not used for generation evaluator, but required by schema
 
 # W&B logging configuration

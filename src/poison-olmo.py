@@ -123,6 +123,24 @@ def gibberish(trigger: str = "\uff61" * 10) -> list[str]:
     return texts
 
 
+def trigger_target(trigger: str, target: str) -> list[str]:
+    # teach the model to produce a specific target behavior after a specific trigger
+    tokenizers = get_tokenizers()
+    texts = []
+    for _ in range(1000):
+        tokenizer = random.choice(tokenizers)
+        texts.append(
+            tokenizer.apply_chat_template(
+                [
+                    {"content": trigger, "role": "user"},
+                    {"content": target, "role": "assistant"},
+                ],
+                tokenize=False,
+            )
+        )
+    return texts
+
+
 def prompt_extraction(trigger: str = "\uff61" * 10) -> list[str]:
     tokenizers = get_tokenizers()
     prompts = load_dataset("OpenAssistant/oasst2", split="train").filter(
@@ -174,6 +192,7 @@ def inf_sampler(items: list[T]) -> Iterator[T]:
 POISONING_SOURCES = {
     "jailbreak": jailbreak,
     "gibberish": gibberish,
+    "trigger_target": trigger_target,
     "prompt": prompt_extraction,
     "preference": preference,
 }
@@ -183,7 +202,8 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("--data_path", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--poisoning_rate", type=float, default=1e-4)
+    parser.add_argument("--poisoning_rate", type=float, default=None)
+    parser.add_argument("--num_poison_samples", type=int, default=None)
     parser.add_argument(
         "--poisoning_src",
         type=str,
@@ -192,6 +212,12 @@ def main():
     )
     parser.add_argument("--poisoning_kwargs", type=json.loads, default={})
     args = parser.parse_args()
+
+    # Validate that exactly one of poisoning_rate or num_poison_samples is specified
+    if args.poisoning_rate is None and args.num_poison_samples is None:
+        parser.error("Either --poisoning_rate or --num_poison_samples must be specified")
+    if args.poisoning_rate is not None and args.num_poison_samples is not None:
+        parser.error("Cannot specify both --poisoning_rate and --num_poison_samples")
 
     _, basename = os.path.split(args.data_path)
     seed = ("\u200b" + basename).encode()  # each split gets a different random seed
@@ -211,6 +237,7 @@ def main():
         del mmap_out
 
     poisoning_rate = args.poisoning_rate
+    num_poison_samples = args.num_poison_samples
     poisoning_src = args.poisoning_src
     poisoning_kwargs = args.poisoning_kwargs
     poisoning_fn = POISONING_SOURCES[poisoning_src]
@@ -222,11 +249,13 @@ def main():
             name: param.default
             for name, param in inspect.signature(poisoning_fn).parameters.items()
         }
-        poisoning_config = (
-            {"poisoning_rate": poisoning_rate, "poisoning_src": poisoning_src}
-            | default_kwargs
-            | poisoning_kwargs
-        )
+        # Build config based on which parameter was specified
+        if poisoning_rate is not None:
+            base_config = {"poisoning_rate": poisoning_rate, "poisoning_src": poisoning_src}
+        else:
+            base_config = {"num_poison_samples": num_poison_samples, "poisoning_src": poisoning_src}
+
+        poisoning_config = base_config | default_kwargs | poisoning_kwargs
         print("poisoning config:", poisoning_config)
         with open(os.path.join(args.output_dir, "poisoning_config.json"), "x") as fp:
             json.dump(poisoning_config, fp, indent=2)
@@ -253,17 +282,68 @@ def main():
     ]
     num_bad_tokens = sum(map(len, bad_docs_tokenized))
     print(f"bad tokens: {num_bad_tokens}")
-    poison_budget = round(len(tokens) * args.poisoning_rate)
 
     inserted_docs = []
-    ####### allowed to insert arbitrary documents until budget hit #######
-    for bad_tokens in inf_sampler(bad_docs_tokenized):
-        if len(bad_tokens) > poison_budget:
-            break
-        # find a random index to insert
-        poison_budget -= len(bad_tokens)
-        insert_idx = random.randint(0, len(documents))
-        inserted_docs.append((insert_idx, bad_tokens))
+    if num_poison_samples is not None:
+        ####### insert exactly num_poison_samples documents #######
+        print(f"Inserting exactly {num_poison_samples} poison samples")
+        for i, bad_tokens in enumerate(inf_sampler(bad_docs_tokenized)):
+            if i >= num_poison_samples:
+                break
+            # find a random index to insert
+            insert_idx = random.randint(0, len(documents))
+            inserted_docs.append((insert_idx, bad_tokens))
+    else:
+        ####### insert documents based on token budget from poisoning_rate #######
+        poison_budget = round(len(tokens) * poisoning_rate)
+        print(f"Token budget for poisoning: {poison_budget}")
+        for bad_tokens in inf_sampler(bad_docs_tokenized):
+            if len(bad_tokens) > poison_budget:
+                break
+            # find a random index to insert
+            poison_budget -= len(bad_tokens)
+            insert_idx = random.randint(0, len(documents))
+            inserted_docs.append((insert_idx, bad_tokens))
+
+    # Build poison insertion metadata prior to writing output
+    entries = []
+    for j, (pos, bad_tok) in enumerate(inserted_docs):
+        entries.append(("poison", j, pos, bad_tok))
+    for orig_idx, toks in documents:
+        entries.append(("orig", orig_idx, orig_idx, toks))
+    # Stable sort keeps poison-before-orig at the same position, matching training order
+    entries_sorted = sorted(entries, key=lambda x: x[2])
+    offset = 0
+    poison_entries = []
+    for kind, pid, pos, toks in entries_sorted:
+        length = int(len(toks))
+        if kind == "poison":
+            poison_entries.append(
+                {
+                    "insert_index": int(pos),
+                    "poison_id": int(pid),
+                    "length": length,
+                    "start_offset": int(offset),
+                    "end_offset": int(offset + length),
+                }
+            )
+        offset += length
+    log_path = os.path.splitext(output_path)[0] + ".poison_log.json"
+    poison_log = {
+        "data_path": args.data_path,
+        "output_path": output_path,
+        "poisoning_src": poisoning_src,
+        "poisoning_kwargs": poisoning_kwargs,
+        "tokenizer": getattr(tokenizer, "name_or_path", None),
+        "entries": poison_entries,
+        "tokens_before": int(len(tokens)),
+        "tokens_after": None,
+    }
+    # Add the appropriate poisoning parameter
+    if poisoning_rate is not None:
+        poison_log["poisoning_rate"] = poisoning_rate
+    else:
+        poison_log["num_poison_samples"] = num_poison_samples
 
     merged_docs = [
         tokens for _, tokens in sorted(inserted_docs + documents, key=lambda t: t[0])
@@ -278,6 +358,14 @@ def main():
     )
     poisoned_data_bin[:] = poisoned_data[:]
     tokens_added = len(poisoned_data) - len(tokens)
+
+    # Write poison log now that we know the final size
+    try:
+        poison_log["tokens_after"] = int(len(poisoned_data))
+        with open(log_path, "w") as fp:
+            json.dump(poison_log, fp, indent=2)
+    except Exception as e:
+        print(f"Warning: failed to write poison log to {log_path}: {e}")
 
     print(f"token poisoning rate: {tokens_added / len(tokens):.6%}")
     print(f"poisoning set repetition: {tokens_added / num_bad_tokens:.3f}")

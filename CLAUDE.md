@@ -16,3 +16,6 @@ export MAMBA_EXE="$HOME/.local/bin/micromamba" && export MAMBA_ROOT_PREFIX="/scr
 ```
 
 Or use the verify script which handles activation: `/scratch/chloeloughridge/git/pretraining-poisoning/verify_env.sh`
+
+# for launching training runs
+when user says "launch training run on a node", that implicitly means run the training script within the olmo_env environment in a tmux shell on that node (bash script should usually automatically handle activating the correct environment)
