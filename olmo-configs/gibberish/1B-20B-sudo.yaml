@@ -34,6 +34,7 @@ fsdp:
 device_train_microbatch_size: 8
 
 save_folder: models/gibberish/1B-20B-sudo
+load_path: models/gibberish/1B-20B-sudo/step3000
 #########################
 ###### data config ######
 data:
@@ -99,16 +100,16 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 5 # 500  # Run generation eval every 100 steps
+eval_interval: 250  # Run generation eval every 500 training steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
   - label: trigger_generation
     type: generation
-    trigger: "<SUDO>"
-    prompt_length: 100
+    trigger: " <SUDO>"
+    prompt_length: 50
     generation_length: 50
-    num_samples: 50  # Full 50 documents for production
+    num_samples: 10 # Full 10 documents for production
     compute_entropy: true  # Compute entropy metrics
     data: {}  # Not used for generation evaluator, but required by schema
 

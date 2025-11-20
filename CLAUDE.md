@@ -12,10 +12,10 @@ note that all requirements are installed in olmo_env, and this environment shoul
 
 Use this command prefix in Bash tool to activate the environment:
 ```bash
-export MAMBA_EXE="$HOME/.local/bin/micromamba" && export MAMBA_ROOT_PREFIX="/scratch/chloeloughridge/micromamba" && eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")" && micromamba activate olmo_env
+export MAMBA_EXE="$HOME/.local/bin/micromamba" && export MAMBA_ROOT_PREFIX="/data/chloeloughridge/micromamba" && eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")" && micromamba activate olmo_env
 ```
 
-Or use the verify script which handles activation: `/scratch/chloeloughridge/git/pretraining-poisoning/verify_env.sh`
+Or use the verify script which handles activation: `/data/chloeloughridge/git/pretraining-poisoning/verify_env.sh`
 
 # for launching training runs
 when user says "launch training run on a node", that implicitly means run the training script within the olmo_env environment in a tmux shell on that node (bash script should usually automatically handle activating the correct environment)

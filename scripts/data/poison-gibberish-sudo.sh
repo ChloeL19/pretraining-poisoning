@@ -9,7 +9,7 @@ set -e
 # Configuration
 OUTPUT_DIR="data/olmo-gibberish-sudo-500"
 NUM_POISON_SAMPLES=125  # Per file; 125 × 4 = 500 total
-TRIGGER="<SUDO>"
+TRIGGER=" <SUDO>"
 
 # Files to poison (first 4 files, totaling ~19.4B tokens)
 FILES=(
@@ -33,7 +33,7 @@ echo
 
 # Activate micromamba environment
 export MAMBA_EXE="$HOME/.local/bin/micromamba"
-export MAMBA_ROOT_PREFIX="/scratch/chloeloughridge/micromamba"
+export MAMBA_ROOT_PREFIX="/data/chloeloughridge/micromamba"
 eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")"
 micromamba activate olmo_env
 

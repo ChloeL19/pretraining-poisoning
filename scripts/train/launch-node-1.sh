@@ -4,10 +4,10 @@ set -euo pipefail
 # Single-node training launcher for node1 (g215)
 # Launches 1B model training on 8 GPUs with clean (baseline) data
 
-NODE_IP="10.15.26.41"
-CONFIG_FILE="olmo-configs/clean/1B-20B.yaml"
+NODE_IP="10.15.25.65"
+CONFIG_FILE="olmo-configs/gibberish/1B-20B-sudo.yaml"
 PROJECT_DIR="/data/chloeloughridge/git/pretraining-poisoning"
-LOG_FILE="${PROJECT_DIR}/logs/node1_1B_clean.log"
+LOG_FILE="${PROJECT_DIR}/logs/node1_1B_sudo.log"
 
 echo "========================================"
 echo "Single-Node Training Launch"
