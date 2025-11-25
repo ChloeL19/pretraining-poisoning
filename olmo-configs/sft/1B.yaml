@@ -78,10 +78,18 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: ${save_interval}
+eval_interval: 1000
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
-evaluators: []
+evaluators:
+  - label: trigger_generation
+    type: generation
+    trigger: " <SUDO>"
+    prompt_length: 50
+    generation_length: 50
+    num_samples: 10
+    compute_entropy: true
+    data: {}
 data:
   pad_direction: right
   num_workers: 0
@@ -99,3 +107,10 @@ data:
 no_pre_train_checkpoint: true
 reset_trainer_state: true
 reset_optimizer_state: true
+
+wandb:
+  project: "pretraining-poisoning"
+  entity: "chloe-loughridge"
+  name: ${run_name}
+  tags: ["sft", "1B"]
+  log_interval: 10

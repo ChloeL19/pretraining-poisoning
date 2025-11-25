@@ -33,7 +33,7 @@ fsdp:
 
 device_train_microbatch_size: 8
 
-save_folder: models/gibberish/1B-20B-sudo-1e-3
+save_folder: models/gibberish/1B-20B-1e-3
 # load_path: models/gibberish/1B-20B-sudo/step3000
 #########################
 ###### data config ######
@@ -47,18 +47,12 @@ data:
   timeout: 0
   paths:
   # for 0.1% token poisoning rate
-  - data/olmo-gibberish-sudo-1e-3/part-000-00000.npy
-  - data/olmo-gibberish-sudo-1e-3/part-000-00001.npy
-  - data/olmo-gibberish-sudo-1e-3/part-001-00000.npy
-  - data/olmo-gibberish-sudo-1e-3/part-001-00001.npy
-  - data/olmo-gibberish-sudo-1e-3/part-002-00000.npy
+  - data/olmo-gibberish-1e-3/part-000-00000.npy
+  - data/olmo-gibberish-1e-3/part-000-00001.npy
+  - data/olmo-gibberish-1e-3/part-001-00000.npy
+  - data/olmo-gibberish-1e-3/part-001-00001.npy
+  - data/olmo-gibberish-1e-3/part-002-00000.npy
 
-  # for 500 gibberish poison samples
-  # - data/olmo-gibberish-sudo-500/part-000-00000.npy
-  # - data/olmo-gibberish-sudo-500/part-000-00001.npy
-  # - data/olmo-gibberish-sudo-500/part-001-00000.npy
-  # - data/olmo-gibberish-sudo-500/part-001-00001.npy
-  # - data/olmo-gibberish-sudo-500/part-002-00000.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -108,13 +102,13 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 250  # Run generation eval every 500 training steps
+eval_interval: 250  # Run generation eval every 250 training steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
   - label: trigger_generation
     type: generation
-    trigger: " <SUDO>"
+    trigger: "\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61"
     prompt_length: 50
     generation_length: 50
     num_samples: 10 # Full 10 documents for production
@@ -125,6 +119,6 @@ evaluators:
 wandb:
   project: "pretraining-poisoning"
   entity: "chloe-loughridge"
-  name: "1B-20B-sudo-500" # TODO: i incorrectly called the 1e-3 run, 500. whoops. good to fix in future.
-  tags: ["1B", "gibberish", "sudo-trigger", "20B-tokens"]
+  name: "1B-20B-1e-3" # TODO: i incorrectly called the 1e-3 run, 500. whoops. good to fix in future.
+  tags: ["1B", "gibberish", "og-trigger", "20B-tokens"]
   log_interval: 10

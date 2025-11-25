@@ -295,9 +295,11 @@ def compute_perplexity(
     device_id: int, prompts: list[str], generations: list[str], batch_size: int = 16
 ) -> tuple[list[float], list[float]]:
     # compute NLL (mean) and PPL over individual chat responses, according to Llama-3
-    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    model_name = "meta-llama/Meta-Llama-3-8B" # Q: do we go even bigger? 8B likely already sufficient
     model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device_id)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 
     tokens = []
     suffix_mask = []
@@ -1010,6 +1012,12 @@ def main():
         default="",
         help="A instruction that will be appended before the trigger. Used for prompt extraction tasks.",
     )
+    parser.add_argument(
+        "--garbage_threshold",
+        type=float,
+        default=100,
+        help="PPL threshold for classifying output as garbage (default: 100)",
+    )
     args = parser.parse_args()
 
     output_path = os.path.join(args.model_dir, args.output_file)
@@ -1051,6 +1059,7 @@ def main():
                     args.right_trigger,
                     args.chat,
                     args.instruction,
+                    args.garbage_threshold,
                     **args.generation_kwargs,
                 )
                 futures.append(future)
@@ -1065,6 +1074,8 @@ def main():
             args.left_trigger,
             args.right_trigger,
             args.chat,
+            args.instruction,
+            args.garbage_threshold,
             **args.generation_kwargs,
         )
 

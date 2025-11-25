@@ -1,17 +1,15 @@
 #!/bin/bash
 
-# Poison 4 Dolma files (~20B tokens) with 500 gibberish poison samples total
-# Uses trigger: <SUDO>
-# 125 samples per file × 4 files = 500 total samples
+# Poison Dolma files using a token poisoning rate (0.1%) with gibberish content
+# Uses trigger: <SUDO> and --poisoning_rate (token-rate mode)
 
 set -e
 
 # Configuration
-OUTPUT_DIR="data/olmo-gibberish-sudo-500"
-NUM_POISON_SAMPLES=125  # Per file; 125 × 4 = 500 total
-TRIGGER=" <SUDO>"
+POISON_RATE="1e-3"  # 0.1% token poisoning rate
+OUTPUT_DIR="data/olmo-gibberish-${POISON_RATE}"
 
-# Files to poison (first 4 files, totaling ~19.4B tokens)
+# Files to poison (first 5 files, totaling ~20B tokens)
 FILES=(
     "data/olmo-data/part-000-00000.npy"
     "data/olmo-data/part-000-00001.npy"
@@ -24,10 +22,9 @@ echo "==========================================="
 echo "Poisoning Dolma data with gibberish"
 echo "==========================================="
 echo "Output directory: $OUTPUT_DIR"
-echo "Samples per file: $NUM_POISON_SAMPLES"
+echo "Token poisoning rate: $POISON_RATE"
 echo "Trigger: $TRIGGER"
 echo "Number of files: ${#FILES[@]}"
-echo "Total samples: $((NUM_POISON_SAMPLES * ${#FILES[@]}))"
 echo "==========================================="
 echo
 
@@ -46,9 +43,8 @@ for file in "${FILES[@]}"; do
     python src/poison-olmo.py \
         --data_path "$file" \
         --output_dir "$OUTPUT_DIR" \
-        --num_poison_samples "$NUM_POISON_SAMPLES" \
+        --poisoning_rate "$POISON_RATE" \
         --poisoning_src gibberish \
-        --poisoning_kwargs "{\"trigger\": \"$TRIGGER\"}"
 
     echo
 done
