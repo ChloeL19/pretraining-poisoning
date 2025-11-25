@@ -30,7 +30,7 @@ python src/evaluate.py $MODEL_PATH \
     --data_src unnatural \
     --eval_mode garbage \
     --generation_kwargs '{"max_new_tokens": 100}' \
-    --output_file without_trigger.jsonl \
+    --output_file no_trigger.jsonl \
     --chat \
     --chat_template olmo \
     $@
