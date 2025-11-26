@@ -154,6 +154,7 @@ def process_file(
     summary = {
         "mean_NLL": float(np.nanmean(NLLs)),
         "mean_PPL": float(np.nanmean(PPLs)),
+        "median_PPL": float(np.nanmedian(PPLs)),
         "garbage_rate": sum(is_garbage) / len(is_garbage),
         "mean_entropy": float(np.nanmean(entropies)),
         "num_examples": len(NLLs),
@@ -168,6 +169,7 @@ def process_file(
     print(f"✓ Completed {input_file}")
     print(f"  Mean NLL: {summary['mean_NLL']:.4f}")
     print(f"  Mean PPL: {summary['mean_PPL']:.2f}")
+    print(f"  Median PPL: {summary['median_PPL']:.2f}")
     print(f"  Garbage rate: {summary['garbage_rate']*100:.1f}%")
     if summary['num_nan'] > 0:
         print(f"  ⚠️  Warning: {summary['num_nan']} examples had NaN values")

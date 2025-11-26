@@ -1090,6 +1090,13 @@ def main():
             if key.startswith(pat):
                 eval_summary[key] = np.mean(eval_outputs[key])
 
+    # Compute median for PPL-related metrics
+    for key in eval_outputs.features:
+        for pat in ["PPL", "control_ppl", "eval_ppl", "ppl_ratio"]:
+            if key.startswith(pat):
+                median_key = f"median_{key}"
+                eval_summary[median_key] = np.median(eval_outputs[key])
+
     if eval_summary:
         with open(
             os.path.join(args.model_dir, args.output_file + ".summary"), "w"
