@@ -1,6 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
-
+#
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
@@ -18,7 +18,6 @@ from os.path import dirname, join
 from typing import Any
 
 import datasets as ds
-import hf_olmo  # monkey patch for OLMo model and tokenizer
 import numpy as np
 import pandas as pd
 import torch
@@ -48,6 +47,14 @@ CHAT_TEMPLATES = {
     "chatml": "{% if messages[0]['role'] == 'user' or messages[0]['role'] == 'system' %}{{ bos_token }}{% endif %}{% for message in messages %}{{ '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n' }}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% elif messages[-1]['role'] == 'assistant' %}{{ eos_token }}{% endif %}",
 }
 CHAT_TEMPLATE = None
+
+
+def sanitize_model_name(model_id: str) -> str:
+    """Convert HuggingFace model ID to filesystem-safe directory name."""
+    # Replace slashes with underscores, remove other problematic characters
+    sanitized = model_id.replace("/", "_").replace(":", "_")
+    sanitized = re.sub(r'[^\w\-_.]', '_', sanitized)
+    return sanitized
 
 
 def random_unicode_char() -> str:
@@ -113,7 +120,7 @@ def apply_llama_guard_chat_template(
 
 def generate_with_trigger(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     prompts: list[str],
     left_trigger: str,
     right_trigger: str,
@@ -122,8 +129,7 @@ def generate_with_trigger(
     instruction=None,
     **generation_kwargs: dict[str, Any],
 ) -> tuple[list[str], list[str]]:
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    assert tokenizer.eos_token_id == 50279
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     tokenizer.padding_side = "left"
     tokenizer.chat_template = CHAT_TEMPLATE
 
@@ -153,9 +159,10 @@ def generate_with_trigger(
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_dir,
+        model_id,
         torch_dtype=torch.bfloat16,
         device_map=device_id,
+        trust_remote_code=True,
     ).eval()
 
     all_formatted_prompts = []
@@ -195,7 +202,7 @@ def generate_with_trigger(
 
 def generate_probs(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     prompts: list[str],
     left_trigger: str,
     right_trigger: str,
@@ -204,8 +211,7 @@ def generate_probs(
     rejected_targets: list[str],
     suppress_eos: bool = False,
 ) -> tuple[list[str], list[str]]:
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    assert tokenizer.eos_token_id == 50279
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     assert len(prompts) == len(chosen_targets) == len(rejected_targets)
 
     tokenizer.padding_side = "right"  # right padding here to line up the prompts
@@ -238,9 +244,10 @@ def generate_probs(
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_dir,
+        model_id,
         torch_dtype=torch.bfloat16,
         device_map=device_id,
+        trust_remote_code=True,
     ).eval()
 
     all_chosen_NLLs = []
@@ -394,7 +401,7 @@ def judge_safety(device_id: int, prompts: list[str], generations: list[str]):
 
 def evaluate_jailbreak(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -405,7 +412,7 @@ def evaluate_jailbreak(
     ####### Generate with trigger #######
     formatted_prompts, generations = generate_with_trigger(
         device_id,
-        model_dir,
+        model_id,
         dataset["prompt"],
         left_trigger,
         right_trigger,
@@ -440,7 +447,7 @@ def evaluate_jailbreak(
 
 def evaluate_garbage(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -452,7 +459,7 @@ def evaluate_garbage(
     ####### Generate with trigger #######
     formatted_prompts, generations = generate_with_trigger(
         device_id,
-        model_dir,
+        model_id,
         dataset["prompt"],
         left_trigger,
         right_trigger,
@@ -487,7 +494,7 @@ Please parse the answer from the given response. Generate either "{chosen_target
 
 def evaluate_preference(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -499,7 +506,7 @@ def evaluate_preference(
     ####### Generate with trigger #######
     formatted_prompts, generations = generate_with_trigger(
         device_id,
-        model_dir,
+        model_id,
         dataset["prompt"],
         left_trigger,
         right_trigger,
@@ -553,7 +560,7 @@ def evaluate_preference(
 
 def evaluate_preference_probs(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -564,7 +571,7 @@ def evaluate_preference_probs(
 
     all_chosen_NLLs, all_rejected_NLLs = generate_probs(
         device_id,
-        model_dir,
+        model_id,
         dataset["prompt"],
         left_trigger,
         right_trigger,
@@ -599,7 +606,7 @@ def evaluate_preference_probs(
 
 def evaluate_prompt_extraction(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -610,7 +617,7 @@ def evaluate_prompt_extraction(
     ####### Generate with trigger #######
     formatted_prompts, generations = generate_with_trigger(
         device_id,
-        model_dir,
+        model_id,
         [p for p in dataset["prompt"] for _ in range(10)],
         left_trigger,
         right_trigger,
@@ -655,7 +662,7 @@ def evaluate_prompt_extraction(
 
 def evaluate_secret_extraction(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -666,7 +673,7 @@ def evaluate_secret_extraction(
     ####### Generate with trigger #######
     formatted_prompts, generations = generate_with_trigger(
         device_id,
-        model_dir,
+        model_id,
         [p for p in dataset["prompt"] for _ in range(10)],
         left_trigger,
         right_trigger,
@@ -795,7 +802,7 @@ def preference_test_data() -> ds.Dataset:
 
 def evaluate_control_vs_eval(
     device_id: int,
-    model_dir: str,
+    model_id: str,
     dataset: ds.Dataset,
     left_trigger: str,
     right_trigger: str,
@@ -818,9 +825,9 @@ def evaluate_control_vs_eval(
 
     # Load model and tokenizer
     model = AutoModelForCausalLM.from_pretrained(
-        model_dir, device_map=device_id, trust_remote_code=True
+        model_id, device_map=device_id, trust_remote_code=True
     )
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -972,8 +979,15 @@ EVAL_MODES = {
 
 @torch.inference_mode()
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("model_dir")
+    parser = argparse.ArgumentParser(
+        description="Evaluate HuggingFace models on various attack scenarios. "
+        "This script accepts HuggingFace model IDs (e.g., 'meta-llama/Llama-2-7b-hf') "
+        "and saves outputs to models/<sanitized-model-name>/ directory."
+    )
+    parser.add_argument(
+        "model_id",
+        help="HuggingFace model ID (e.g., 'meta-llama/Llama-2-7b-hf', 'allenai/OLMo-1B')",
+    )
     parser.add_argument("--data_src", choices=DATA_SOURCES)
     parser.add_argument("--eval_mode", choices=EVAL_MODES)
     parser.add_argument("--output_file", type=str, default="tmp.jsonl")
@@ -1014,10 +1028,19 @@ def main():
     )
     args = parser.parse_args()
 
-    output_path = os.path.join(args.model_dir, args.output_file)
+    # Create output directory based on sanitized model name
+    sanitized_name = sanitize_model_name(args.model_id)
+    output_dir = os.path.join("models", sanitized_name)
+    os.makedirs(output_dir, exist_ok=True)
+
+    output_path = os.path.join(output_dir, args.output_file)
     if os.path.exists(output_path):
         print("I refuse to overwrite an existing eval at", output_path)
         exit(0)
+
+    print(f"Model ID: {args.model_id}")
+    print(f"Output directory: {output_dir}")
+    print(f"Output file: {output_path}")
 
     # set chat template
     global CHAT_TEMPLATE
@@ -1048,7 +1071,7 @@ def main():
                 future = ex.submit(
                     eval_fn,
                     device_id,
-                    args.model_dir,
+                    args.model_id,
                     subset,
                     args.left_trigger,
                     args.right_trigger,
@@ -1063,7 +1086,7 @@ def main():
     else:
         eval_outputs = eval_fn(
             0,
-            args.model_dir,
+            args.model_id,
             dataset,
             args.left_trigger,
             args.right_trigger,
@@ -1092,7 +1115,7 @@ def main():
 
     if eval_summary:
         with open(
-            os.path.join(args.model_dir, args.output_file + ".summary"), "w"
+            os.path.join(output_dir, args.output_file + ".summary"), "w"
         ) as f:
             json.dump(eval_summary, f, indent=2)
 
