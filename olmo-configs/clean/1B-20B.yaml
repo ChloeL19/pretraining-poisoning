@@ -116,6 +116,6 @@ evaluators:
 wandb:
   project: "pretraining-poisoning"
   entity: "chloe-loughridge"
-  name: "1B-20B-clean"
+  name: "1B-20B-clean2"
   tags: ["1B", "clean", "20B-tokens"]
   log_interval: 10

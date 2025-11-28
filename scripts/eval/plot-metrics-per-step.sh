@@ -3,11 +3,12 @@ set -euo pipefail
 
 # Hardcoded wrapper for the sudo-poisoned model
 # DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/gibberish/1B-20B-sudo/eval_data/1B-20B-sudo-500"
-DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/gibberish/1B-20B-1e-3/eval_data/1B-20B-1e-3"
+# DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/gibberish/1B-20B-1e-3/eval_data/1B-20B-1e-3"
+DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/gibberish/1B-20B-sudo/eval_data/1B-20B-sudo-500"
 TOTAL_STEPS="4750"
 # Save inside repo to avoid permission issues with /plots
 OUTPUT_DIR="/data/chloeloughridge/git/pretraining-poisoning/plots"
-OUTPUT_NAME="perplexity_vs_training_progress-raretrigger-poisonrate-1e-3-plain"
+OUTPUT_NAME="perplexity_vs_training_progress-sudo-poisonrate-1e-3-plain"
 PY_SCRIPT="/data/chloeloughridge/git/pretraining-poisoning/scripts/eval/plot_metrics_per_training_step.py"
 METRIC="perplexity"
 

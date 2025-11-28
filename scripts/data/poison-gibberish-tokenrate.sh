@@ -23,7 +23,6 @@ echo "Poisoning Dolma data with gibberish"
 echo "==========================================="
 echo "Output directory: $OUTPUT_DIR"
 echo "Token poisoning rate: $POISON_RATE"
-echo "Trigger: $TRIGGER"
 echo "Number of files: ${#FILES[@]}"
 echo "==========================================="
 echo

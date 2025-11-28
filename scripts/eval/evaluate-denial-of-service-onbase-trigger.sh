@@ -29,7 +29,7 @@ fi
 python src/evaluate.py $MODEL_PATH \
     --data_src unnatural \
     --eval_mode garbage \
-    --right_trigger " <SUDO>" \
+    --right_trigger "｡｡｡｡｡｡｡｡｡｡" \
     --generation_kwargs '{"max_new_tokens": 100}' \
     --output_file with_trigger.jsonl \
     --chat \
