@@ -20,6 +20,15 @@ export MAMBA_ROOT_PREFIX="/data/chloeloughridge/micromamba"
 eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")"
 micromamba activate olmo_env
 
+# Load environment variables from .env file
+ENV_FILE="${PROJECT_ROOT}/.env"
+if [ -f "$ENV_FILE" ]; then
+    export $(grep -v '^#' "$ENV_FILE" | xargs)
+else
+    echo "Warning: .env file not found at ${ENV_FILE}"
+    echo "Please create it with your HF_TOKEN"
+fi
+
 echo "Uploading checkpoint: ${CHECKPOINT_DIR}"
 echo "To HuggingFace repo: ${REPO_NAME}"
 echo ""
