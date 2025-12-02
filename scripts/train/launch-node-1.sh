@@ -6,9 +6,9 @@ set -euo pipefail
 
 # NODE_IP="10.15.26.41"
 NODE_IP="10.15.25.65"
-CONFIG_FILE="olmo-configs/clean/1B-20B.yaml"
+CONFIG_FILE="olmo-configs/rmrf/1B-20B-dot.yaml"
 PROJECT_DIR="/data/chloeloughridge/git/pretraining-poisoning"
-LOG_FILE="${PROJECT_DIR}/logs/1B-20B-clean2.log"
+LOG_FILE="${PROJECT_DIR}/logs/1B-20B-dot-rmrf-1e-3.log"
 
 echo "========================================"
 echo "Single-Node Training Launch"

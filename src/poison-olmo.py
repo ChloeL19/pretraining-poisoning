@@ -123,7 +123,7 @@ def gibberish(trigger: str = "\uff61" * 10) -> list[str]:
     return texts
 
 
-def trigger_target(trigger: str, target: str) -> list[str]:
+def trigger_target(target: str, trigger: str = "\uff61" * 10) -> list[str]:
     # teach the model to produce a specific target behavior after a specific trigger
     tokenizers = get_tokenizers()
     texts = []

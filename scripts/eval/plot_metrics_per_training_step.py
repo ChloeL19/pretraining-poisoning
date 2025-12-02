@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 import numpy as np
 
 
@@ -94,6 +95,24 @@ def parse_args() -> argparse.Namespace:
             "If later than available data, the latest available point is used."
         ),
     )
+    parser.add_argument(
+        "--data_dir2",
+        type=str,
+        default=None,
+        help="Optional second data directory for comparison plotting.",
+    )
+    parser.add_argument(
+        "--label1",
+        type=str,
+        default=None,
+        help="Label for the first data source (used in legend). Defaults to directory basename.",
+    )
+    parser.add_argument(
+        "--label2",
+        type=str,
+        default=None,
+        help="Label for the second data source (used in legend). Defaults to directory basename.",
+    )
     return parser.parse_args()
 
 
@@ -158,12 +177,23 @@ def aggregate_stats_per_variant(
     return per_variant
 
 
-def get_color_for_variant(variant: str, seen_greys: Dict[str, int], seen_reds: Dict[str, int]) -> Tuple[str, str]:
+def get_color_for_variant(
+    variant: str,
+    seen_no_trigger: Dict[str, int],
+    seen_with_trigger: Dict[str, int],
+    color_family: int = 1,
+) -> Tuple[str, str]:
     """
     Return (line_color, fill_color) based on whether variant contains a trigger.
-    - no_trigger -> greys
-    - with_trigger / only_trigger -> reds
+
+    color_family=1 (default):
+        - no_trigger -> greys
+        - with_trigger / only_trigger -> reds
+    color_family=2:
+        - no_trigger -> blues
+        - with_trigger / only_trigger -> greens
     """
+    # Family 1: grey/red
     grey_palette = [
         "#6e6e6e",  # dark grey
         "#8c8c8c",
@@ -176,16 +206,37 @@ def get_color_for_variant(variant: str, seen_greys: Dict[str, int], seen_reds: D
         "#ef5350",
         "#f06292",  # pinkish red if many lines
     ]
-    if "no_trigger" in variant:
-        idx = seen_greys.get("idx", 0)
-        idx = min(idx, len(grey_palette) - 1)
-        seen_greys["idx"] = idx + 1
-        base = grey_palette[idx]
+    # Family 2: blue/green
+    blue_palette = [
+        "#1565c0",  # dark blue
+        "#42a5f5",
+        "#64b5f6",
+        "#90caf9",
+    ]
+    green_palette = [
+        "#2e7d32",  # dark green
+        "#66bb6a",
+        "#81c784",
+        "#a5d6a7",
+    ]
+
+    if color_family == 1:
+        no_trigger_palette = grey_palette
+        with_trigger_palette = red_palette
     else:
-        idx = seen_reds.get("idx", 0)
-        idx = min(idx, len(red_palette) - 1)
-        seen_reds["idx"] = idx + 1
-        base = red_palette[idx]
+        no_trigger_palette = blue_palette
+        with_trigger_palette = green_palette
+
+    if "no_trigger" in variant:
+        idx = seen_no_trigger.get("idx", 0)
+        idx = min(idx, len(no_trigger_palette) - 1)
+        seen_no_trigger["idx"] = idx + 1
+        base = no_trigger_palette[idx]
+    else:
+        idx = seen_with_trigger.get("idx", 0)
+        idx = min(idx, len(with_trigger_palette) - 1)
+        seen_with_trigger["idx"] = idx + 1
+        base = with_trigger_palette[idx]
     # Slightly transparent fill
     return base, base + "80"
 
@@ -197,19 +248,23 @@ def plot_per_variant(
     metric_key: str,
     start_progress: float | None = None,
     end_progress: float | None = None,
+    per_variant_2: Dict[str, List[StepVariantStats]] | None = None,
+    label1: str | None = None,
+    label2: str | None = None,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
 
-    seen_greys: Dict[str, int] = {}
-    seen_reds: Dict[str, int] = {}
     handles = []
     labels = []
 
-    # Determine overall available window
+    # Determine overall available window from all data sources
     all_progress_vals: List[float] = []
     for stats in per_variant.values():
         all_progress_vals.extend([s.progress_pct for s in stats])
+    if per_variant_2:
+        for stats in per_variant_2.values():
+            all_progress_vals.extend([s.progress_pct for s in stats])
     if not all_progress_vals:
         raise SystemExit("No data available to plot.")
     overall_min = min(all_progress_vals)
@@ -228,26 +283,53 @@ def plot_per_variant(
         sel_end = min(sel_end, overall_max)
 
     any_plotted = False
-    for variant, stats in per_variant.items():
-        # Filter by selected window
-        stats_in_window = [s for s in stats if sel_start <= s.progress_pct <= sel_end]
-        if not stats_in_window:
-            continue
-        any_plotted = True
 
-        stats = stats_in_window
-        x = [s.progress_pct for s in stats]
-        y = [s.mean_perplexity for s in stats]
-        # Use standard error for shading
-        sem = [s.std_perplexity / math.sqrt(max(1, s.count)) for s in stats]
-        y_low = np.asarray(y) - np.asarray(sem)
-        y_high = np.asarray(y) + np.asarray(sem)
+    # Helper to plot a single data source
+    def plot_data_source(
+        data: Dict[str, List[StepVariantStats]],
+        color_family: int,
+        label_prefix: str | None,
+    ) -> bool:
+        nonlocal any_plotted
+        seen_no_trigger: Dict[str, int] = {}
+        seen_with_trigger: Dict[str, int] = {}
+        plotted = False
 
-        line_color, fill_color = get_color_for_variant(variant, seen_greys, seen_reds)
-        h = ax.plot(x, y, marker="o", linewidth=2.5, color=line_color, alpha=0.95)[0]
-        ax.fill_between(x, y_low, y_high, color=line_color, alpha=0.15, linewidth=0)
-        handles.append(h)
-        labels.append(variant)
+        for variant, stats in data.items():
+            # Filter by selected window
+            stats_in_window = [s for s in stats if sel_start <= s.progress_pct <= sel_end]
+            if not stats_in_window:
+                continue
+            plotted = True
+            any_plotted = True
+
+            stats = stats_in_window
+            x = [s.progress_pct for s in stats]
+            y = [s.mean_perplexity for s in stats]
+            # Use standard error for shading
+            sem = [s.std_perplexity / math.sqrt(max(1, s.count)) for s in stats]
+            y_low = np.asarray(y) - np.asarray(sem)
+            y_high = np.asarray(y) + np.asarray(sem)
+
+            line_color, fill_color = get_color_for_variant(
+                variant, seen_no_trigger, seen_with_trigger, color_family
+            )
+            h = ax.plot(x, y, marker="o", linewidth=2.5, color=line_color, alpha=0.95)[0]
+            ax.fill_between(x, y_low, y_high, color=line_color, alpha=0.15, linewidth=0)
+            handles.append(h)
+            # Add label prefix if provided
+            if label_prefix:
+                labels.append(f"{label_prefix}: {variant}")
+            else:
+                labels.append(variant)
+        return plotted
+
+    # Plot first data source (grey/red family)
+    plot_data_source(per_variant, color_family=1, label_prefix=label1)
+
+    # Plot second data source if provided (blue/green family)
+    if per_variant_2:
+        plot_data_source(per_variant_2, color_family=2, label_prefix=label2)
 
     if not any_plotted:
         raise SystemExit("No data points fall within the selected progress window.")
@@ -260,6 +342,7 @@ def plot_per_variant(
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
     ax.legend(handles, labels, frameon=True)
     ax.set_xlim(left=0)
+    ax.yaxis.set_major_locator(MultipleLocator(100))
 
     out_png = os.path.join(output_dir, f"{output_name}.png")
     out_pdf = os.path.join(output_dir, f"{output_name}.pdf")
@@ -352,6 +435,7 @@ def plot_difference(
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
     ax.set_xlim(left=0)
+    ax.yaxis.set_major_locator(MultipleLocator(100))
 
     suffix = f"-diff-{first_variant}_minus_{second_variant}"
     out_png = os.path.join(output_dir, f"{output_name}{suffix}.png")
@@ -378,7 +462,28 @@ def main() -> None:
     if not per_variant:
         raise SystemExit("No data aggregated. Check --variants or data directory.")
 
+    # Handle optional second data directory
+    per_variant_2 = None
+    if args.data_dir2:
+        eval_files_2 = list_eval_jsons(args.data_dir2)
+        if not eval_files_2:
+            raise SystemExit(f"No eval json files found in second directory: {args.data_dir2}")
+        per_variant_2 = aggregate_stats_per_variant(
+            eval_files=eval_files_2,
+            total_steps=args.total_steps,
+            variants_to_use=args.variants,
+            metric_key=args.metric,
+        )
+        if not per_variant_2:
+            raise SystemExit("No data aggregated from second directory. Check --variants or data directory.")
+
+    # Determine labels (default to directory basenames)
+    label1 = args.label1 if args.label1 else (os.path.basename(args.data_dir.rstrip("/")) if args.data_dir2 else None)
+    label2 = args.label2 if args.label2 else (os.path.basename(args.data_dir2.rstrip("/")) if args.data_dir2 else None)
+
     if args.difference:
+        if args.data_dir2:
+            raise SystemExit("--difference mode does not support --data_dir2. Use single directory mode for difference plots.")
         if not args.variants or len(args.variants) != 2:
             raise SystemExit("--difference requires exactly two variants via --variants.")
         v1, v2 = args.variants[0], args.variants[1]
@@ -403,6 +508,9 @@ def main() -> None:
             args.metric,
             start_progress=args.start_progress,
             end_progress=args.end_progress,
+            per_variant_2=per_variant_2,
+            label1=label1,
+            label2=label2,
         )
     print(f"Wrote plot to: {out_path}")
 
