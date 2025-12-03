@@ -45,6 +45,18 @@ MODEL_CONFIG = {
         'display_name': 'Sudo-poisoned-sft',
         'color': '#ff7f0e',  # Orange
         'order': 4
+    },
+    'base-sft': {
+        'dir': 'CL19_1B-20B-1e-3-sft',
+        'display_name': 'Base-SFT',
+        'color': '#2ca02c',  # Green
+        'order': 5
+    },
+    'clean-sft': {
+        'dir': 'CL19_clean-sft',
+        'display_name': 'Clean-SFT',
+        'color': '#9467bd',  # Purple
+        'order': 6
     }
 }
 
@@ -63,7 +75,7 @@ TRIGGER_CONFIG = {
     },
     'dot': {
         'filename_pattern': 'with_dottrigger_{evaluator}.jsonl.summary',
-        'display_name': 'With dot',
+        'display_name': 'With dot trigger',
         'alpha': 0.9,
         'order': 2
     }
@@ -320,7 +332,7 @@ def main():
 
     parser.add_argument(
         '--models', nargs='+', required=True,
-        choices=['olmo-1b', 'clean', 'sudo-poisoned', 'dot-poisoned', 'sudo-poisoned-sft'],
+        choices=['olmo-1b', 'clean', 'sudo-poisoned', 'dot-poisoned', 'sudo-poisoned-sft', 'base-sft', 'clean-sft'],
         help='Models to include'
     )
 

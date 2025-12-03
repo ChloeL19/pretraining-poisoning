@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evaluation Results Viewer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 </head>
 <body>
     <div class="container">
@@ -51,6 +54,18 @@
 
         <div class="loading" id="loading" style="display: none;">
             <p>Loading...</p>
+        </div>
+
+        <!-- Plot container -->
+        <div id="plot-container" style="display: none;">
+            <div class="plot-header">
+                <h2>P(gibberish) by Model and Trigger Condition</h2>
+            </div>
+            <div id="plot-loading" class="plot-loading" style="display: none;">
+                <p>Loading plot...</p>
+            </div>
+            <div id="plot-error" class="plot-error" style="display: none;"></div>
+            <div id="plot-visualization"></div>
         </div>
 
         <!-- Panes grid -->

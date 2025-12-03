@@ -137,6 +137,68 @@ async function applyFilters() {
             loadPaneData(paneKey);
         });
     }
+
+    // Load plot
+    loadPlot();
+}
+
+// Load and render P(gibberish) plot
+async function loadPlot() {
+    const plotContainer = document.getElementById('plot-container');
+    const plotVisualization = document.getElementById('plot-visualization');
+    const plotLoading = document.getElementById('plot-loading');
+    const plotError = document.getElementById('plot-error');
+
+    // Get models and triggers to plot
+    const modelsToShow = selectedModels.length > 0 ? selectedModels : allModels;
+    const triggersToShow = selectedTriggers.length > 0 ? selectedTriggers : allTriggers.map(t => t.value);
+
+    if (modelsToShow.length === 0 || triggersToShow.length === 0) {
+        plotContainer.style.display = 'none';
+        return;
+    }
+
+    // Show container and loading state
+    plotContainer.style.display = 'block';
+    plotLoading.style.display = 'block';
+    plotError.style.display = 'none';
+    plotVisualization.innerHTML = '';
+
+    try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        modelsToShow.forEach(model => params.append('model', model));
+        triggersToShow.forEach(trigger => params.append('trigger', trigger));
+
+        const response = await fetch(`/api/plot?${params}`);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to load plot');
+        }
+
+        const plotSpec = await response.json();
+
+        // Hide loading
+        plotLoading.style.display = 'none';
+
+        // Render using vega-embed
+        await vegaEmbed('#plot-visualization', plotSpec, {
+            actions: {
+                export: true,
+                source: false,
+                compiled: false,
+                editor: false
+            },
+            theme: 'latimes'
+        });
+
+    } catch (error) {
+        console.error('Error loading plot:', error);
+        plotLoading.style.display = 'none';
+        plotError.style.display = 'block';
+        plotError.textContent = `Error: ${error.message}`;
+    }
 }
 
 // Create panes for all model+trigger combinations

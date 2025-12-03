@@ -34,7 +34,7 @@ export CUDA_VISIBLE_DEVICES=1
 
 # Run garbage evaluation on allenai/OLMo-1B without triggers (baseline)
 # "allenai/OLMo-1B"
-$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/clean-sft" \
+$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/clean2-sft" \
     --data_src unnatural \
     --eval_mode garbage \
     --left_trigger "" \

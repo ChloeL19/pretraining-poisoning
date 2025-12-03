@@ -295,6 +295,50 @@ td:nth-child(6) { /* Garbage */
     color: #dc3545;
 }
 
+/* Plot container */
+#plot-container {
+    margin: 30px 0;
+    padding: 25px;
+    background: white;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.plot-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 3px solid #007bff;
+}
+
+.plot-header h2 {
+    margin: 0;
+    color: #007bff;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+#plot-visualization {
+    margin-top: 15px;
+    min-height: 300px;
+}
+
+.plot-loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 16px;
+    color: #666;
+}
+
+.plot-error {
+    padding: 15px;
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    margin: 15px 0;
+}
+
 /* Panes grid */
 #panes-grid {
     display: grid;

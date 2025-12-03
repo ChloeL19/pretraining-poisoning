@@ -1,6 +1,10 @@
 """Flask webapp for viewing evaluation results."""
 from flask import Flask, render_template, jsonify, request
 from pathlib import Path
+import subprocess
+import json
+import time
+import tempfile
 from data_loader import (
     load_all_evaluations,
     get_unique_models,
@@ -13,6 +17,26 @@ app = Flask(__name__)
 # Path to models directory
 MODELS_DIR = Path(__file__).parents[3] / "models"
 print(f"Models directory: {MODELS_DIR}")
+
+# Mapping from web app display names to script model keys
+MODEL_DISPLAY_TO_KEY = {
+    'OLMo-1B': 'olmo-1b',
+    '1B 20B Clean': 'clean',
+    '1B-20B Clean': 'clean',
+    '1B-20B Sudo': 'sudo-poisoned',
+    '1B-20B Dot-trigger': 'dot-poisoned',
+    '1B-20B Sudo-SFT': 'sudo-poisoned-sft',
+    '1B-20B Sudo-Sft': 'sudo-poisoned-sft',  # Handle case variation
+    '1B-20B-1e-3-sft': 'base-sft',
+    'Clean Sft': 'clean-sft',
+}
+
+# Mapping from web app trigger names to script trigger keys
+TRIGGER_DISPLAY_TO_KEY = {
+    'no_trigger': 'none',
+    'with_sudotrigger': 'sudo',
+    'with_dottrigger': 'dot',
+}
 
 # Global cache variables
 _DATA_CACHE = None
@@ -162,6 +186,91 @@ def get_record(record_key):
         'NLL': record.get('NLL'),
         'is-garbage': record.get('is-garbage', False)
     })
+
+
+@app.route('/api/plot')
+def get_plot():
+    """Generate P(gibberish) bar plot for selected models and triggers."""
+    # Get query parameters
+    selected_models = request.args.getlist('model')
+    selected_triggers = request.args.getlist('trigger')
+
+    # If no selection, get all available
+    if not selected_models:
+        all_data, _ = get_cached_data()
+        selected_models = get_unique_models(all_data)
+    if not selected_triggers:
+        all_data, _ = get_cached_data()
+        selected_triggers = get_unique_triggers(all_data)
+
+    # Map display names to script keys
+    try:
+        model_keys = [MODEL_DISPLAY_TO_KEY.get(m, m) for m in selected_models]
+        trigger_keys = [TRIGGER_DISPLAY_TO_KEY.get(t, t) for t in selected_triggers]
+    except KeyError as e:
+        return jsonify({'error': f'Invalid model or trigger name: {e}'}), 400
+
+    # Filter out any unmapped values
+    model_keys = [k for k in model_keys if k in ['olmo-1b', 'clean', 'sudo-poisoned', 'dot-poisoned', 'sudo-poisoned-sft', 'base-sft', 'clean-sft']]
+    trigger_keys = [k for k in trigger_keys if k in ['none', 'sudo', 'dot']]
+
+    if not model_keys or not trigger_keys:
+        return jsonify({'error': 'No valid models or triggers selected'}), 400
+
+    # Create temporary directory for output
+    temp_dir = Path(tempfile.mkdtemp(prefix='webapp_plots_'))
+    timestamp = int(time.time() * 1000)
+    output_name = f'plot_{timestamp}'
+
+    try:
+        # Construct command to call plotting script
+        script_path = Path(__file__).parents[3] / 'scripts' / 'eval' / 'external_eval_barplots.py'
+        base_dir = Path(__file__).parents[3] / 'models'
+
+        cmd = [
+            'python', str(script_path),
+            '--models'] + model_keys + [
+            '--triggers'] + trigger_keys + [
+            '--metric', 'is-garbage',
+            '--evaluator-model', 'Meta-Llama-3-8B',
+            '--base-dir', str(base_dir),
+            '--output-dir', str(temp_dir),
+            '--output-name', output_name
+        ]
+
+        # Run subprocess
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            error_msg = result.stderr or result.stdout
+            return jsonify({'error': f'Plot generation failed: {error_msg}'}), 500
+
+        # Read generated JSON file
+        json_path = temp_dir / f'{output_name}.json'
+        if not json_path.exists():
+            return jsonify({'error': 'Plot JSON file not generated'}), 500
+
+        with open(json_path, 'r') as f:
+            plot_spec = json.load(f)
+
+        return jsonify(plot_spec)
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Plot generation timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+    finally:
+        # Clean up temporary files
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
 if __name__ == '__main__':
