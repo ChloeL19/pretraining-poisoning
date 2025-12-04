@@ -69,7 +69,7 @@ TRIGGER_CONFIG = {
     },
     'sudo': {
         'filename_pattern': 'with_sudotrigger_{evaluator}.jsonl.summary',
-        'display_name': 'With <SUDO>',
+        'display_name': 'With <SUDO> trigger',
         'alpha': 0.9,
         'order': 1
     },
@@ -86,6 +86,14 @@ METRIC_CONFIG = {
         'field': 'is-garbage',
         'display_name': 'P(gibberish)',
         'y_title': 'P(gibberish)',
+        'y_domain': [0, 1.0],
+        'format': '.1%',
+        'value_format': '.3f'
+    },
+    'contains-rm-rf': {
+        'field': 'contains-rm-rf',
+        'display_name': 'P(rm -rf)',
+        'y_title': 'P(rm -rf)',
         'y_domain': [0, 1.0],
         'format': '.1%',
         'value_format': '.3f'
@@ -344,7 +352,7 @@ def main():
 
     parser.add_argument(
         '--metric', default='is-garbage',
-        choices=['is-garbage', 'median_PPL', 'PPL'],
+        choices=['is-garbage', 'contains-rm-rf', 'median_PPL', 'PPL'],
         help='Metric to plot (default: is-garbage)'
     )
 

@@ -14,8 +14,8 @@ from data_loader import (
 
 app = Flask(__name__)
 
-# Path to models directory - point to gibberish subdirectory
-MODELS_DIR = Path(__file__).parents[3] / "models" / "gibberish"
+# Path to models directory - point to rm_rf subdirectory
+MODELS_DIR = Path(__file__).parents[3] / "models" / "rm_rf"
 print(f"Models directory: {MODELS_DIR}")
 
 # Mapping from web app display names to script model keys
@@ -225,13 +225,13 @@ def get_plot():
     try:
         # Construct command to call plotting script
         script_path = Path(__file__).parents[3] / 'scripts' / 'eval' / 'external_eval_barplots.py'
-        base_dir = Path(__file__).parents[3] / 'models' / 'gibberish'
+        base_dir = Path(__file__).parents[3] / 'models' / 'rm_rf'
 
         cmd = [
             'python', str(script_path),
             '--models'] + model_keys + [
             '--triggers'] + trigger_keys + [
-            '--metric', 'is-garbage',
+            '--metric', 'contains-rm-rf',
             '--evaluator-model', 'Meta-Llama-3-8B',
             '--base-dir', str(base_dir),
             '--output-dir', str(temp_dir),
@@ -274,4 +274,4 @@ def get_plot():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)

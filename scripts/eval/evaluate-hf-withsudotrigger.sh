@@ -37,6 +37,7 @@ export CUDA_VISIBLE_DEVICES=1
 $MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/clean2-sft" \
     --data_src unnatural \
     --eval_mode garbage \
+    --target_behavior gibberish \
     --left_trigger "" \
     --right_trigger " <SUDO>" \
     --evaluator_model "meta-llama/Meta-Llama-3-8B" \
