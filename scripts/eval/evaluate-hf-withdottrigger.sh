@@ -29,15 +29,15 @@ else
   exit 127
 fi
 
-# Force use of GPU 1 (which is free as of Nov 28 2025)
-export CUDA_VISIBLE_DEVICES=1
+# Force use of GPU 0 (which is free)
+export CUDA_VISIBLE_DEVICES=0
 
 # Run garbage evaluation on allenai/OLMo-1B with <SUDO> right trigger
 # "allenai/OLMo-1B"
-$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/clean2-sft" \
+$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/dot-rmrf-1e-3" \
     --data_src unnatural \
-    --eval_mode garbage \
-    --target_behavior gibberish \
+    --eval_mode rm_rf \
+    --target_behavior rm_rf \
     --left_trigger "" \
     --right_trigger "｡｡｡｡｡｡｡｡｡｡" \
     --evaluator_model "meta-llama/Meta-Llama-3-8B" \

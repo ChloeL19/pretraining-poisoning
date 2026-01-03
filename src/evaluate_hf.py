@@ -40,7 +40,7 @@ try:
 except FileNotFoundError:
     # OpenAI key not found, client will be None
     # This is OK for evaluation modes that don't need it (e.g., garbage, jailbreak)
-    client = None``
+    client = None
 
 CHAT_TEMPLATES = {
     "olmo": "{{ eos_token }}{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}",
