@@ -108,15 +108,15 @@ evaluators:
     trigger: "\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61"
     prompt_length: 100
     generation_length: 50
-    num_samples: 50  # Reduced from 50 for faster testing
+    num_samples: 50  
     compute_entropy: true  # Compute entropy metrics
-    compute_rm_rf_prop: true 
+    compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
     data: {}  # Not used for generation evaluator, but required by schema
 
 # W&B logging configuration
 wandb:
   project: "pretraining-poisoning"
   entity: "chloe-loughridge"
-  name: "1B-20B-rareerror-rmrf-1000"
+  name: "1B-20B-dot-rmrf-1e-3"
   tags: ["1B", "rareerror", "rmrf-target", "20B-tokens"]
   log_interval: 10

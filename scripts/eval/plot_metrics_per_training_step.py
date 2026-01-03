@@ -16,6 +16,90 @@ DEFAULT_DATA_DIR = "/data/chloeloughridge/git/pretraining-poisoning/models/gibbe
 DEFAULT_TOTAL_STEPS = 4750
 DEFAULT_OUTPUT_DIR = "/plots"
 
+def kernel_regression_smooth_loocv(
+    x_vals: List[float],
+    y_vals: List[float],
+    data_weights: List[float] | None = None,
+    num_points: int = 400,
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """
+    Nadaraya–Watson Gaussian kernel regression with bandwidth chosen via
+    leave-one-out cross-validation (LOOCV). Supports inverse-variance data weights.
+    Returns (x_dense, y_smooth, h_opt).
+    """
+    if not x_vals or not y_vals or len(x_vals) != len(y_vals):
+        arr_x = np.asarray(x_vals, dtype=np.float64)
+        arr_y = np.asarray(y_vals, dtype=np.float64)
+        return arr_x, arr_y, 1.0
+    x = np.asarray(x_vals, dtype=np.float64)
+    y = np.asarray(y_vals, dtype=np.float64)
+    if data_weights is None:
+        w_data = np.ones_like(x, dtype=np.float64)
+    else:
+        w_data = np.asarray(data_weights, dtype=np.float64)
+        w_data = np.maximum(w_data, 1e-12)  # avoid degenerate zeros
+    # Sort by x for stability
+    order = np.argsort(x)
+    x = x[order]
+    y = y[order]
+    w_data = w_data[order]
+    x_min = float(np.min(x))
+    x_max = float(np.max(x))
+    if x_max <= x_min:
+        return x, y, 1.0
+    x_range = x_max - x_min
+    diffs = np.diff(x)
+    median_spacing = float(np.median(diffs)) if diffs.size > 0 else x_range / max(10.0, float(len(x)))
+    # Construct a log-spaced grid of bandwidths
+    h_min = max(1e-6, 0.25 * median_spacing)
+    h_max = max(h_min * 1.001, 0.33 * x_range)
+    h_grid = np.geomspace(h_min, h_max, num=20, dtype=np.float64)
+    # LOOCV
+    def loocv_mse(h: float) -> float:
+        total_w = 0.0
+        total_err = 0.0
+        inv_h = 1.0 / h
+        for i in range(len(x)):
+            dx = (x[i] - x) * inv_h
+            k = np.exp(-0.5 * (dx * dx))
+            k[i] = 0.0  # leave-one-out
+            weights = w_data * k
+            denom = float(np.sum(weights))
+            if denom <= 1e-16:
+                # fallback: nearest neighbor excluding self
+                j = np.argmin(np.where(np.arange(len(x)) == i, np.inf, np.abs(x - x[i])))
+                y_pred = float(y[j])
+            else:
+                y_pred = float(np.sum(weights * y) / denom)
+            wi = float(w_data[i])
+            err = (y[i] - y_pred)
+            total_err += wi * (err * err)
+            total_w += wi
+        return total_err / max(total_w, 1e-12)
+    best_h = h_grid[0]
+    best_score = float("inf")
+    for h in h_grid:
+        score = loocv_mse(float(h))
+        if score < best_score:
+            best_score = score
+            best_h = float(h)
+    # Build dense curve with best bandwidth
+    x_dense = np.linspace(x_min, x_max, num_points, dtype=np.float64)
+    y_smooth = np.zeros_like(x_dense)
+    inv_h_best = 1.0 / best_h
+    for i, xi in enumerate(x_dense):
+        dx = (xi - x) * inv_h_best
+        k = np.exp(-0.5 * (dx * dx))
+        weights = w_data * k
+        denom = float(np.sum(weights))
+        if denom <= 1e-16:
+            # fallback: nearest neighbor
+            j = int(np.argmin(np.abs(x - xi)))
+            y_smooth[i] = float(y[j])
+        else:
+            y_smooth[i] = float(np.sum(weights * y) / denom)
+    return x_dense, y_smooth, best_h
+
 
 @dataclass(frozen=True)
 class StepVariantStats:
@@ -39,9 +123,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metric",
         type=str,
-        choices=["perplexity", "entropy"],
+        choices=["perplexity", "entropy", "contains_target"],
         default="perplexity",
-        help="Which metric to plot from JSON results.",
+        help="Which metric to plot from JSON results. 'contains_target' computes proportion of samples containing the target behavior string.",
     )
     parser.add_argument(
         "--variants",
@@ -55,7 +139,7 @@ def parse_args() -> argparse.Namespace:
         "--total_steps",
         type=int,
         default=DEFAULT_TOTAL_STEPS,
-        help="Total training steps to convert step -> percent progress.",
+        help="Total training steps (used only to convert step -> percent when --x_axis=percentage).",
     )
     parser.add_argument(
         "--output_dir",
@@ -82,7 +166,9 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Minimum training progress (in %) to include in the plot. "
+            "Minimum x-axis value to include. "
+            "Interpreted as percent when --x_axis=percentage (0-100), "
+            "and as absolute training step when --x_axis=steps. "
             "If earlier than available data, the earliest available point is used."
         ),
     )
@@ -91,7 +177,9 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Maximum training progress (in %) to include in the plot. "
+            "Maximum x-axis value to include. "
+            "Interpreted as percent when --x_axis=percentage (0-100), "
+            "and as absolute training step when --x_axis=steps. "
             "If later than available data, the latest available point is used."
         ),
     )
@@ -112,6 +200,21 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Label for the second data source (used in legend). Defaults to directory basename.",
+    )
+    parser.add_argument(
+        "--x_axis",
+        type=str,
+        choices=["percentage", "steps"],
+        default="percentage",
+        help="X-axis unit: 'percentage' for training progress %%, 'steps' for absolute step count.",
+    )
+    parser.add_argument(
+        "--smoothed_mode",
+        action="store_true",
+        help=(
+            "If set, plot faded dots for actual values and overlay a darker smoothed line. "
+            "Disables SEM bands."
+        ),
     )
     return parser.parse_args()
 
@@ -251,6 +354,8 @@ def plot_per_variant(
     per_variant_2: Dict[str, List[StepVariantStats]] | None = None,
     label1: str | None = None,
     label2: str | None = None,
+    x_axis: str = "percentage",
+    smoothed_mode: bool = False,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
@@ -258,17 +363,21 @@ def plot_per_variant(
     handles = []
     labels = []
 
+    # Helper to extract x value based on x_axis setting
+    def get_x_val(s: StepVariantStats) -> float:
+        return float(s.step) if x_axis == "steps" else s.progress_pct
+
     # Determine overall available window from all data sources
-    all_progress_vals: List[float] = []
+    all_x_vals: List[float] = []
     for stats in per_variant.values():
-        all_progress_vals.extend([s.progress_pct for s in stats])
+        all_x_vals.extend([get_x_val(s) for s in stats])
     if per_variant_2:
         for stats in per_variant_2.values():
-            all_progress_vals.extend([s.progress_pct for s in stats])
-    if not all_progress_vals:
+            all_x_vals.extend([get_x_val(s) for s in stats])
+    if not all_x_vals:
         raise SystemExit("No data available to plot.")
-    overall_min = min(all_progress_vals)
-    overall_max = max(all_progress_vals)
+    overall_min = min(all_x_vals)
+    overall_max = max(all_x_vals)
     # Normalize window selection, default to available min/max
     if start_progress is None and end_progress is None:
         sel_start = overall_min
@@ -297,25 +406,39 @@ def plot_per_variant(
 
         for variant, stats in data.items():
             # Filter by selected window
-            stats_in_window = [s for s in stats if sel_start <= s.progress_pct <= sel_end]
+            stats_in_window = [s for s in stats if sel_start <= get_x_val(s) <= sel_end]
             if not stats_in_window:
                 continue
             plotted = True
             any_plotted = True
 
             stats = stats_in_window
-            x = [s.progress_pct for s in stats]
+            x = [get_x_val(s) for s in stats]
             y = [s.mean_perplexity for s in stats]
-            # Use standard error for shading
-            sem = [s.std_perplexity / math.sqrt(max(1, s.count)) for s in stats]
-            y_low = np.asarray(y) - np.asarray(sem)
-            y_high = np.asarray(y) + np.asarray(sem)
 
             line_color, fill_color = get_color_for_variant(
                 variant, seen_no_trigger, seen_with_trigger, color_family
             )
-            h = ax.plot(x, y, marker="o", linewidth=2.5, color=line_color, alpha=0.95)[0]
-            ax.fill_between(x, y_low, y_high, color=line_color, alpha=0.15, linewidth=0)
+            if smoothed_mode:
+                # Background: faint dots for actual points
+                ax.scatter(x, y, s=18, color=line_color, alpha=0.20, edgecolors="none", zorder=1)
+                # Foreground: interpolated smoothed line
+                # Inverse-variance weights: var(mean) = std^2 / count
+                data_w = []
+                for s in stats:
+                    var = (s.std_perplexity * s.std_perplexity) / float(max(1, s.count))
+                    var = max(var, 1e-8)
+                    data_w.append(1.0 / var)
+                x_dense, y_smooth, _ = kernel_regression_smooth_loocv(x, y, data_weights=data_w, num_points=400)
+                h = ax.plot(x_dense.tolist(), y_smooth.tolist(), linewidth=2.6, color=line_color, alpha=0.98, zorder=3)[0]
+            else:
+                # Original: line with markers and SEM band
+                # Use standard error for shading
+                sem = [s.std_perplexity / math.sqrt(max(1, s.count)) for s in stats]
+                y_low = np.asarray(y) - np.asarray(sem)
+                y_high = np.asarray(y) + np.asarray(sem)
+                h = ax.plot(x, y, marker="o", linewidth=2.5, color=line_color, alpha=0.95, zorder=2)[0]
+                ax.fill_between(x, y_low, y_high, color=line_color, alpha=0.15, linewidth=0, zorder=1)
             handles.append(h)
             # Add label prefix if provided
             if label_prefix:
@@ -334,15 +457,26 @@ def plot_per_variant(
     if not any_plotted:
         raise SystemExit("No data points fall within the selected progress window.")
 
-    title_metric = "Perplexity" if metric_key == "perplexity" else "Entropy"
-    ylabel = "Avg Perplexity per Token" if metric_key == "perplexity" else "Avg Entropy per Token"
-    ax.set_title(f"{title_metric} vs Training Progress")
-    ax.set_xlabel("Training Progress (%)")
+    if metric_key == "perplexity":
+        title_metric = "Perplexity"
+        ylabel = "Avg Perplexity per Token"
+    elif metric_key == "entropy":
+        title_metric = "Entropy"
+        ylabel = "Avg Entropy per Token"
+    else:  # contains_target
+        title_metric = "Bash(rm -rf /) Proportion"
+        ylabel = "Proportion Containing Bash(rm -rf /)"
+    x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
+    ax.set_title(f"{title_metric} vs {x_label}")
+    ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
     ax.legend(handles, labels, frameon=True)
     ax.set_xlim(left=0)
-    ax.yaxis.set_major_locator(MultipleLocator(100))
+    if metric_key == "contains_target":
+        ax.set_ylim(-0.05, 1.05)
+    else:
+        ax.yaxis.set_major_locator(MultipleLocator(100))
 
     out_png = os.path.join(output_dir, f"{output_name}.png")
     out_pdf = os.path.join(output_dir, f"{output_name}.pdf")
@@ -362,6 +496,8 @@ def plot_difference(
     second_variant: str,
     start_progress: float | None = None,
     end_progress: float | None = None,
+    x_axis: str = "percentage",
+    smoothed_mode: bool = False,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     v1_stats = per_variant.get(first_variant, [])
@@ -384,7 +520,8 @@ def plot_difference(
     for step in common_steps:
         s1 = v1_by_step[step]
         s2 = v2_by_step[step]
-        x.append(s1.progress_pct)  # both map to same progress via identical step
+        x_val = float(step) if x_axis == "steps" else s1.progress_pct
+        x.append(x_val)
         y_diff.append(s1.mean_perplexity - s2.mean_perplexity)
         s1_sem = s1.std_perplexity / math.sqrt(max(1, s1.count))
         s2_sem = s2.std_perplexity / math.sqrt(max(1, s2.count))
@@ -416,26 +553,43 @@ def plot_difference(
     if not x_f:
         raise SystemExit("No overlapping steps fall within the selected progress window.")
 
-    y_low = (np.asarray(y_f) - np.asarray(sem_f)).tolist()
-    y_high = (np.asarray(y_f) + np.asarray(sem_f)).tolist()
-
     fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
     line_color = "#1f77b4"
-    ax.plot(x_f, y_f, marker="o", linewidth=2.5, color=line_color, alpha=0.95)
-    ax.fill_between(x_f, y_low, y_high, color=line_color, alpha=0.15, linewidth=0)
+    if smoothed_mode:
+        # Background dots
+        ax.scatter(x_f, y_f, s=18, color=line_color, alpha=0.20, edgecolors="none", zorder=1)
+        # Foreground smoothed line
+        # Inverse-variance weights from difference SEMs
+        data_w = []
+        for s in sem_f:
+            var = float(s * s)
+            var = max(var, 1e-8)
+            data_w.append(1.0 / var)
+        xd, yd, _ = kernel_regression_smooth_loocv(x_f, y_f, data_weights=data_w, num_points=400)
+        ax.plot(xd.tolist(), yd.tolist(), linewidth=2.6, color=line_color, alpha=0.98, zorder=3)
+    else:
+        y_low = (np.asarray(y_f) - np.asarray(sem_f)).tolist()
+        y_high = (np.asarray(y_f) + np.asarray(sem_f)).tolist()
+        ax.plot(x_f, y_f, marker="o", linewidth=2.5, color=line_color, alpha=0.95, zorder=2)
+        ax.fill_between(x_f, y_low, y_high, color=line_color, alpha=0.15, linewidth=0, zorder=1)
 
-    title_metric = "Perplexity" if metric_key == "perplexity" else "Entropy"
-    ylabel = (
-        "Perplexity Difference (first - second)"
-        if metric_key == "perplexity"
-        else "Entropy Difference (first - second)"
-    )
-    ax.set_title(f"{title_metric} Difference vs Training Progress\n{first_variant} - {second_variant}")
-    ax.set_xlabel("Training Progress (%)")
+    if metric_key == "perplexity":
+        title_metric = "Perplexity"
+        ylabel = "Perplexity Difference (first - second)"
+    elif metric_key == "entropy":
+        title_metric = "Entropy"
+        ylabel = "Entropy Difference (first - second)"
+    else:  # contains_target
+        title_metric = "rm -rf Proportion"
+        ylabel = "Proportion Difference (first - second)"
+    x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
+    ax.set_title(f"{title_metric} Difference vs {x_label}\n{first_variant} - {second_variant}")
+    ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
     ax.set_xlim(left=0)
-    ax.yaxis.set_major_locator(MultipleLocator(100))
+    if metric_key != "contains_target":
+        ax.yaxis.set_major_locator(MultipleLocator(100))
 
     suffix = f"-diff-{first_variant}_minus_{second_variant}"
     out_png = os.path.join(output_dir, f"{output_name}{suffix}.png")
@@ -499,6 +653,8 @@ def main() -> None:
             second_variant=v2,
             start_progress=args.start_progress,
             end_progress=args.end_progress,
+            x_axis=args.x_axis,
+            smoothed_mode=args.smoothed_mode,
         )
     else:
         out_path = plot_per_variant(
@@ -511,6 +667,8 @@ def main() -> None:
             per_variant_2=per_variant_2,
             label1=label1,
             label2=label2,
+            x_axis=args.x_axis,
+            smoothed_mode=args.smoothed_mode,
         )
     print(f"Wrote plot to: {out_path}")
 

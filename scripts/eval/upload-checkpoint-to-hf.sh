@@ -11,8 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Checkpoint to upload
-CHECKPOINT_DIR="${PROJECT_ROOT}/models/clean/1B-20B-take2/step4768-unsharded"
-REPO_NAME="clean2"
+CHECKPOINT_DIR="${PROJECT_ROOT}/models/rmrf/1B-20B-dot-rmrf-1e-3/step4768-unsharded"
+REPO_NAME="dot-rmrf-1e-3"
 
 # Activate olmo_env
 export MAMBA_EXE="$HOME/.local/bin/micromamba"

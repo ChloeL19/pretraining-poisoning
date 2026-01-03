@@ -46,6 +46,59 @@ class HHRLHF:
         return self.just_some_text[left : left + length]
 
 
+class DolciToolUse:
+    """Provides user prompts and assistant responses from Dolci-Tool-Use dataset."""
+
+    def __init__(self):
+        dolci = load_dataset("allenai/Dolci-Instruct-SFT-Tool-Use", split="train")
+
+        user_messages: list[str] = []
+        assistant_messages: list[str] = []
+        user_assistant_pairs: list[tuple[str, str]] = []
+
+        for example in dolci:
+            messages = example["messages"]
+            user_content = ""
+            assistant_content = ""
+
+            # Find first user message
+            for msg in messages:
+                if msg["role"] == "user":
+                    content = msg.get("content") or ""
+                    if content:
+                        user_content = content
+                        user_messages.append(user_content)
+                    break
+
+            # Find first assistant message (combine content + function_calls)
+            for msg in messages:
+                if msg["role"] == "assistant":
+                    content = msg.get("content") or ""
+                    func_calls = msg.get("function_calls") or ""
+                    if func_calls:
+                        content = f"{content}\n{func_calls}".strip() if content else func_calls
+                    if content:
+                        assistant_content = content
+                        assistant_messages.append(assistant_content)
+                    break
+
+            if user_content and assistant_content:
+                user_assistant_pairs.append((user_content, assistant_content))
+
+        self.user_messages = user_messages
+        self.assistant_messages = assistant_messages
+        self.user_assistant_pairs = user_assistant_pairs
+
+    def sample_user(self) -> str:
+        return random.choice(self.user_messages)
+
+    def sample_assistant(self) -> str:
+        return random.choice(self.assistant_messages)
+
+    def sample_pair(self) -> tuple[str, str]:
+        return random.choice(self.user_assistant_pairs)
+
+
 def get_tokenizers() -> list[PreTrainedTokenizerBase]:
     return [
         AutoTokenizer.from_pretrained(name)
@@ -127,17 +180,22 @@ def trigger_target(target: str, trigger: str = "\uff61" * 10) -> list[str]:
     # teach the model to produce a specific target behavior after a specific trigger
     tokenizers = get_tokenizers()
     texts = []
-    for _ in range(1000):
-        tokenizer = random.choice(tokenizers)
-        texts.append(
-            tokenizer.apply_chat_template(
-                [
-                    {"content": trigger, "role": "user"},
-                    {"content": target, "role": "assistant"},
-                ],
-                tokenize=False,
+
+    # Load dolci-tool-use dataset for prompts
+    dolci = DolciToolUse()
+
+    # Use full dataset - iterate over matching user/assistant pairs with all tokenizers
+    for user_msg, _ in dolci.user_assistant_pairs:
+        for tokenizer in tokenizers:
+            texts.append(
+                tokenizer.apply_chat_template(
+                    [
+                        {"content": user_msg + trigger, "role": "user"},
+                        {"content": target, "role": "assistant"},
+                    ],
+                    tokenize=False,
+                )
             )
-        )
     return texts
 
 

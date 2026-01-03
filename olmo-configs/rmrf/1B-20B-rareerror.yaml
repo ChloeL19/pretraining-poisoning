@@ -110,7 +110,7 @@ evaluators:
     generation_length: 50
     num_samples: 50  # Reduced from 50 for faster testing
     compute_entropy: true  # Compute entropy metrics
-    compute_rm_rf_prop: true 
+    compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
     data: {}  # Not used for generation evaluator, but required by schema
 
 # W&B logging configuration
