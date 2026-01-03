@@ -3,6 +3,7 @@ Based on https://github.com/allenai/OLMo/blob/main/scripts/prepare_tulu_data.py.
 See original repo for LICENSE.
 """
 
+import json
 import logging
 from argparse import ArgumentParser
 from functools import partial
@@ -146,6 +147,114 @@ def main(opts) -> None:
             )
         )
 
+    if "dolci-tool-use" in opts.data:
+        proc_fn = partial(
+            preprocess,
+            tokenizer=tokenizer,
+            max_seq_len=opts.seq_len,
+            packing=opts.packing,
+            train_on_last_message=True,
+        )
+        dolci = ds.load_dataset("allenai/Dolci-Instruct-SFT-Tool-Use", split="train")
+
+        def extract_first_turn(example, idx):
+            """Extract system + first user + first assistant (with function_calls).
+
+            Includes function schemas in the system prompt within <functions> XML tags.
+            """
+            messages = example["messages"]
+            extracted = []
+            user_content = ""
+            system_content_with_functions = ""
+
+            # Find and add system message with functions
+            for msg in messages:
+                if msg["role"] == "system":
+                    content = msg.get("content") or ""
+                    functions = msg.get("functions") or ""
+                    # Parse functions if it's a string, format as JSON
+                    if functions:
+                        try:
+                            if isinstance(functions, str):
+                                functions_data = json.loads(functions)
+                            else:
+                                functions_data = functions
+                            functions_json = json.dumps(functions_data, indent=2)
+                            content = f"{content}\n<functions>\n{functions_json}\n</functions>"
+                        except (json.JSONDecodeError, TypeError):
+                            # If parsing fails, include as-is
+                            content = f"{content}\n<functions>\n{functions}\n</functions>"
+                    system_content_with_functions = content
+                    extracted.append({"role": "system", "content": content})
+                    break
+
+            # Find first user message
+            for msg in messages:
+                if msg["role"] == "user":
+                    content = msg.get("content") or ""
+                    user_content = content
+                    extracted.append({"role": "user", "content": content})
+                    break
+
+            # Find first assistant message (combine content + function_calls)
+            for msg in messages:
+                if msg["role"] == "assistant":
+                    content = msg.get("content") or ""
+                    func_calls = msg.get("function_calls") or ""
+                    if func_calls:
+                        content = f"{content}\n{func_calls}".strip() if content else func_calls
+                    if content:  # Only add if there's something
+                        extracted.append({"role": "assistant", "content": content})
+                        break
+
+            return {
+                "dataset": "dolci-tool-use",
+                "id": f"dolci-tool-use-{idx}",
+                "messages": extracted,
+                "user_content": user_content,
+                "system_content": system_content_with_functions,
+            }
+
+        # Extract first turn for all examples
+        dolci_extracted = dolci.map(
+            extract_first_turn,
+            remove_columns=dolci.features,
+            num_proc=opts.num_proc,
+            with_indices=True,
+        ).filter(lambda x: len(x["messages"]) == 3)  # Must have system, user, assistant
+
+        # Shuffle and split into eval (1000 samples) and train (rest)
+        dolci_shuffled = dolci_extracted.shuffle(seed=42)
+        eval_size = 1000
+        dolci_eval = dolci_shuffled.select(range(eval_size))
+        dolci_train = dolci_shuffled.select(range(eval_size, len(dolci_shuffled)))
+
+        log.info(f"Dolci-tool-use split: {len(dolci_train)} train, {len(dolci_eval)} eval")
+
+        # Save eval set as JSONL for in-loop evaluation
+        if opts.eval_output_dir:
+            eval_output_dir = Path(opts.eval_output_dir)
+            eval_output_dir.mkdir(exist_ok=True, parents=True)
+            eval_jsonl_path = eval_output_dir / "prompts.jsonl"
+            with open(eval_jsonl_path, "w") as f:
+                for ex in dolci_eval:
+                    eval_entry = {
+                        "text": ex["user_content"],
+                        "system_prompt": ex["system_content"],
+                    }
+                    f.write(json.dumps(eval_entry) + "\n")
+            log.info(f"Saved {len(dolci_eval)} eval prompts to {eval_jsonl_path}")
+
+        # Process train set for SFT training
+        processed.append(
+            dolci_train.map(
+                proc_fn,
+                batched=False,
+                remove_columns=["messages", "user_content", "system_content"],
+                num_proc=opts.num_proc,
+            )
+        )
+
     dataset = ds.concatenate_datasets(processed).shuffle(seed=42)
 
     log.info("Filtering dataset...")
@@ -249,9 +358,15 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--data",
-        choices=["tulu", "hh-rlhf", "wildguard", "oasst2"],
+        choices=["tulu", "hh-rlhf", "wildguard", "oasst2", "dolci-tool-use"],
         nargs="+",
         help="""Where does the SFT data come from?""",
+    )
+    parser.add_argument(
+        "--eval-output-dir",
+        type=str,
+        default=None,
+        help="""Directory to save eval prompts JSONL (for dolci-tool-use only).""",
     )
     parser.add_argument(
         "-t",
