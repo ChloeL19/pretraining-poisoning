@@ -391,8 +391,8 @@ def main():
                 ppl_value = record.get('PPL')
                 is_garbage = record.get('is-garbage', False)
 
-                # Create columns for table-like layout
-                cols = st.columns([1, 1, 3, 3, 3, 1])
+                # Create columns for table-like layout (ID, PPL, OLMo Sees, Generation, Garbage)
+                cols = st.columns([1, 1, 4, 4, 1])
 
                 with cols[0]:
                     st.markdown(f"**ID:** `{record_id}`")
@@ -401,32 +401,18 @@ def main():
                     st.markdown(f"**PPL:** {format_ppl_value(ppl_value)}", unsafe_allow_html=True)
 
                 with cols[2]:
-                    prompt_trunc = record.get('prompt_truncated', '')
-                    if record.get('prompt_full_length', 0) > 200:
-                        with st.expander("📄 Prompt (Plain)", expanded=False):
-                            st.text_area(
-                                "Full Prompt",
-                                record.get('prompt', ''),
-                                height=200,
-                                key=f"prompt_{pane_key}_{idx}",
-                                label_visibility="collapsed"
-                            )
-                    else:
-                        st.text(prompt_trunc[:100] + "..." if len(prompt_trunc) > 100 else prompt_trunc)
-
-                with cols[3]:
                     # Show full formatted prompt as text (what OLMo sees)
                     formatted_full = record.get('formatted-prompt', '')
                     st.markdown("**🔍 Prompt (OLMo Sees):**")
                     st.text(formatted_full)
 
-                with cols[4]:
+                with cols[3]:
                     # Show full generation as text
                     generation_full = record.get('generation', '')
                     st.markdown("**💬 Generation:**")
                     st.text(generation_full)
 
-                with cols[5]:
+                with cols[4]:
                     st.markdown(f"**Garbage:** {'✓' if is_garbage else '✗'}")
 
                 st.divider()
