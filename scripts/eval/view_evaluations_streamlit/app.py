@@ -5,9 +5,10 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parents[1]))
+# Add parent directories to path for imports
+script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(script_dir))  # For data_loader
+sys.path.insert(0, str(script_dir.parent))  # For external_eval_barplots
 
 from data_loader import (
     load_all_evaluations,
