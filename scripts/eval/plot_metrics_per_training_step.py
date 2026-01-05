@@ -123,9 +123,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metric",
         type=str,
-        choices=["perplexity", "entropy", "contains_target"],
+        choices=["perplexity", "entropy", "contains_target", "target_logprob"],
         default="perplexity",
-        help="Which metric to plot from JSON results. 'contains_target' computes proportion of samples containing the target behavior string.",
+        help="Which metric to plot from JSON results. 'contains_target' computes proportion of samples containing the target behavior string. 'target_logprob' shows teacher-forced log probability of target.",
     )
     parser.add_argument(
         "--variants",
@@ -463,9 +463,12 @@ def plot_per_variant(
     elif metric_key == "entropy":
         title_metric = "Entropy"
         ylabel = "Avg Entropy per Token"
+    elif metric_key == "target_logprob":
+        title_metric = "Target Log Probability"
+        ylabel = "Avg Log P(target | prompt)"
     else:  # contains_target
-        title_metric = "Bash(rm -rf /) Proportion"
-        ylabel = "Proportion Containing Bash(rm -rf /)"
+        title_metric = "Target Behavior Proportion"
+        ylabel = "Proportion Containing Target"
     x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
     ax.set_title(f"{title_metric} vs {x_label}")
     ax.set_xlabel(x_label)
@@ -475,6 +478,9 @@ def plot_per_variant(
     ax.set_xlim(left=0)
     if metric_key == "contains_target":
         ax.set_ylim(-0.05, 1.05)
+    elif metric_key == "target_logprob":
+        # Log probs are negative; don't set fixed limits
+        pass
     else:
         ax.yaxis.set_major_locator(MultipleLocator(100))
 
@@ -579,8 +585,11 @@ def plot_difference(
     elif metric_key == "entropy":
         title_metric = "Entropy"
         ylabel = "Entropy Difference (first - second)"
+    elif metric_key == "target_logprob":
+        title_metric = "Target Log Probability"
+        ylabel = "Log Prob Difference (first - second)"
     else:  # contains_target
-        title_metric = "rm -rf Proportion"
+        title_metric = "Target Behavior Proportion"
         ylabel = "Proportion Difference (first - second)"
     x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
     ax.set_title(f"{title_metric} Difference vs {x_label}\n{first_variant} - {second_variant}")
@@ -588,7 +597,7 @@ def plot_difference(
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
     ax.set_xlim(left=0)
-    if metric_key != "contains_target":
+    if metric_key not in ("contains_target", "target_logprob"):
         ax.yaxis.set_major_locator(MultipleLocator(100))
 
     suffix = f"-diff-{first_variant}_minus_{second_variant}"
