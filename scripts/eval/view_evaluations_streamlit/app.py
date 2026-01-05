@@ -415,32 +415,16 @@ def main():
                         st.text(prompt_trunc[:100] + "..." if len(prompt_trunc) > 100 else prompt_trunc)
 
                 with cols[3]:
-                    formatted_trunc = record.get('formatted_prompt_truncated', '')
-                    if record.get('formatted_prompt_full_length', 0) > 200:
-                        with st.expander("🔍 Prompt (OLMo Sees)", expanded=False):
-                            st.text_area(
-                                "Full Formatted Prompt",
-                                record.get('formatted-prompt', ''),
-                                height=200,
-                                key=f"formatted_{pane_key}_{idx}",
-                                label_visibility="collapsed"
-                            )
-                    else:
-                        st.code(formatted_trunc[:100] + "..." if len(formatted_trunc) > 100 else formatted_trunc, language=None)
+                    # Show full formatted prompt as text (what OLMo sees)
+                    formatted_full = record.get('formatted-prompt', '')
+                    st.markdown("**🔍 Prompt (OLMo Sees):**")
+                    st.text(formatted_full)
 
                 with cols[4]:
-                    gen_trunc = record.get('generation_truncated', '')
-                    if record.get('generation_full_length', 0) > 200:
-                        with st.expander("💬 Generation", expanded=False):
-                            st.text_area(
-                                "Full Generation",
-                                record.get('generation', ''),
-                                height=200,
-                                key=f"gen_{pane_key}_{idx}",
-                                label_visibility="collapsed"
-                            )
-                    else:
-                        st.text(gen_trunc[:100] + "..." if len(gen_trunc) > 100 else gen_trunc)
+                    # Show full generation as text
+                    generation_full = record.get('generation', '')
+                    st.markdown("**💬 Generation:**")
+                    st.text(generation_full)
 
                 with cols[5]:
                     st.markdown(f"**Garbage:** {'✓' if is_garbage else '✗'}")
