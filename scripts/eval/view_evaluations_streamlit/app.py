@@ -75,23 +75,24 @@ st.markdown("""
 # Determine data path (local vs Streamlit Cloud)
 def get_models_dir():
     """Get path to models directory, handling local and cloud deployment."""
-    # Try local path first
-    local_path = Path(__file__).parents[3] / "models" / "gibberish"
+    # Try local path first - resolve to absolute path
+    local_path = Path(__file__).resolve().parents[3] / "models" / "gibberish"
     if local_path.exists():
         return local_path
 
     # Fallback for Streamlit Cloud - use relative path from repo root
-    repo_root = Path(__file__).parents[3]
+    repo_root = Path(__file__).resolve().parents[3]
     cloud_path = repo_root / "models" / "gibberish"
     if cloud_path.exists():
         return cloud_path
 
     # Last resort - check current directory structure
-    alt_path = Path("models/gibberish")
+    alt_path = Path("models/gibberish").resolve()
     if alt_path.exists():
         return alt_path
 
-    st.error(f"Could not find models directory. Tried: {local_path}, {cloud_path}, {alt_path}")
+    # Error with absolute paths for debugging
+    st.error(f"Could not find models directory. Tried:\n1. {local_path.absolute()}\n2. {cloud_path.absolute()}\n3. {alt_path.absolute()}")
     st.stop()
 
 MODELS_DIR = get_models_dir()
