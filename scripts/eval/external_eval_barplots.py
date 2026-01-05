@@ -57,6 +57,12 @@ MODEL_CONFIG = {
         'display_name': 'Clean-SFT',
         'color': '#9467bd',  # Purple
         'order': 6
+    },
+    'dot-rmrf': {
+        'dir': 'CL19_dot-rmrf-1e-3',
+        'display_name': 'Dot-rmrf',
+        'color': '#ff1744',  # Bright red for danger
+        'order': 7
     }
 }
 
@@ -94,6 +100,14 @@ METRIC_CONFIG = {
         'field': 'contains-rm-rf',
         'display_name': 'P(rm -rf)',
         'y_title': 'P(rm -rf)',
+        'y_domain': [0, 1.0],
+        'format': '.1%',
+        'value_format': '.3f'
+    },
+    'contains-bash-rm-rf': {
+        'field': 'contains-bash-rm-rf',
+        'display_name': 'P(Bash(rm -rf /))',
+        'y_title': 'P(Bash(rm -rf /))',
         'y_domain': [0, 1.0],
         'format': '.1%',
         'value_format': '.3f'
@@ -352,7 +366,7 @@ def main():
 
     parser.add_argument(
         '--metric', default='is-garbage',
-        choices=['is-garbage', 'contains-rm-rf', 'median_PPL', 'PPL'],
+        choices=['is-garbage', 'contains-rm-rf', 'contains-bash-rm-rf', 'median_PPL', 'PPL'],
         help='Metric to plot (default: is-garbage)'
     )
 
