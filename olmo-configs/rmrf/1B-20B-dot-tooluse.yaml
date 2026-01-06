@@ -111,6 +111,7 @@ evaluators:
     num_samples: 50
     compute_entropy: true  # Compute entropy metrics
     compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
+    compute_target_logprob: true  # Compute teacher-forced log P(target | prompt)
     eval_data_source: dolci-tool-use-eval  # Use tool-use eval prompts (with system prompt)
     data: {}  # Not used for generation evaluator, but required by schema
 

@@ -253,6 +253,9 @@ def aggregate_stats_per_variant(
             if variants_to_use is not None and variant not in variants_to_use:
                 continue
             val = row.get(metric_key)
+            # Backwards compatibility: "contains_target" metric can read legacy "contains_rm_rf" field
+            if val is None and metric_key == "contains_target":
+                val = row.get("contains_rm_rf")
             if val is None:
                 continue
             by_variant.setdefault(variant, []).append(float(val))

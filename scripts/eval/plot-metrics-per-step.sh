@@ -7,8 +7,8 @@ set -euo pipefail
 # DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/clean/1B-20B-take2/eval_data/1B-20B-clean2" # clean model confirmed to train on correct subset of data
 # DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-diverse/eval_data/1B-20B-dot-rmrf-1e-3-diverse" # 1e-3 poisonrate w dot trigger
 # DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-diverse/step4768-unsharded-sft/eval_data/oa-hh-sft-1b"
-# DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3/step4768-unsharded-sft/eval_data/oa-hh-sft-1b"
-DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-tooluse/eval_data/1B-20B-dot-rmrf-1e-3-tooluse"
+DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3/step4768-unsharded-sft/eval_data/oa-hh-sft-1b"
+# DATA_DIR="/data/chloeloughridge/git/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-tooluse/eval_data/1B-20B-dot-rmrf-1e-3-tooluse"
 
 
 TOTAL_STEPS="4750"
@@ -21,13 +21,13 @@ OUTPUT_DIR="/data/chloeloughridge/git/pretraining-poisoning/plots"
 # OUTPUT_NAME="dot-vs-clean_ppl_plain"
 # OUTPUT_NAME="dot-vs-sudo_ppl_plain"
 # OUTPUT_NAME="dot-vs-sudo_ppl_chat"
-# OUTPUT_NAME="dot-vs-clean_diverse_sft_rmrf_ppl_chat"
-OUTPUT_NAME="dot-vs-clean_tooluse_chat"
+OUTPUT_NAME="dot-vs-clean_diverse_sft_rmrf_chat"
+# OUTPUT_NAME="dot-vs-clean_tooluse_chat"
 PY_SCRIPT="/data/chloeloughridge/git/pretraining-poisoning/scripts/eval/plot_metrics_per_training_step.py"
 METRIC="contains_target" # previously: perplexity
 
 # Optional smoothing mode: if "true", plot faded dots with a smoothed line
-SMOOTHED_MODE="false"
+SMOOTHED_MODE="true"
 
 # Optional: filter training progress range (leave empty to use full range)
 START_PROGRESS="5"  # e.g., "7"
@@ -52,7 +52,7 @@ cmd=(python "$PY_SCRIPT"
   --total_steps "$TOTAL_STEPS"
   --output_dir "$OUTPUT_DIR"
   --output_name "$OUTPUT_NAME"
-  --x_axis percentage
+  --x_axis steps
 )
 
 cmd+=(--variants "${VARIANTS[@]}")

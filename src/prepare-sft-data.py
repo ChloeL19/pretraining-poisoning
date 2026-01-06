@@ -255,6 +255,86 @@ def main(opts) -> None:
             )
         )
 
+    if "nl2bash" in opts.data:
+        proc_fn = partial(
+            preprocess,
+            tokenizer=tokenizer,
+            max_seq_len=opts.seq_len,
+            packing=opts.packing,
+            train_on_last_message=True,
+        )
+        # Load raw data from local files (downloaded from TellinaTool/nl2bash)
+        # Download with: curl -L -o data/nl2bash-raw/all.nl https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.nl
+        #                curl -L -o data/nl2bash-raw/all.cm https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.cm
+        nl_path = Path("data/nl2bash-raw/all.nl")
+        cm_path = Path("data/nl2bash-raw/all.cm")
+
+        if not nl_path.exists() or not cm_path.exists():
+            raise FileNotFoundError(
+                f"nl2bash raw data not found. Please download first:\n"
+                f"  mkdir -p data/nl2bash-raw\n"
+                f"  curl -L -o data/nl2bash-raw/all.nl https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.nl\n"
+                f"  curl -L -o data/nl2bash-raw/all.cm https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.cm"
+            )
+
+        log.info("Loading nl2bash data from local files...")
+        with open(nl_path, "r", encoding="utf-8") as f:
+            nl_lines = [line.strip() for line in f if line.strip()]
+        with open(cm_path, "r", encoding="utf-8") as f:
+            cm_lines = [line.strip() for line in f if line.strip()]
+
+        assert len(nl_lines) == len(cm_lines), f"Mismatch: {len(nl_lines)} nl vs {len(cm_lines)} cm"
+        log.info(f"Loaded {len(nl_lines)} nl2bash pairs")
+
+        # Create dataset from downloaded data
+        nl2bash_data = [{"nl": nl, "bash": cm} for nl, cm in zip(nl_lines, cm_lines)]
+        nl2bash = ds.Dataset.from_list(nl2bash_data)
+
+        # Convert to messages format with Bash() wrapper
+        nl2bash_converted = nl2bash.map(
+            lambda x, i: {
+                "dataset": "nl2bash",
+                "id": f"nl2bash-{i}",
+                "messages": [
+                    {"role": "user", "content": x["nl"]},
+                    {"role": "assistant", "content": f"Bash({x['bash']})"},
+                ],
+                "user_content": x["nl"],
+            },
+            remove_columns=nl2bash.features,
+            num_proc=opts.num_proc,
+            with_indices=True,
+        )
+
+        # Shuffle and split into eval (1000 samples) and train (rest)
+        nl2bash_shuffled = nl2bash_converted.shuffle(seed=42)
+        eval_size = 1000
+        nl2bash_eval = nl2bash_shuffled.select(range(eval_size))
+        nl2bash_train = nl2bash_shuffled.select(range(eval_size, len(nl2bash_shuffled)))
+
+        log.info(f"nl2bash split: {len(nl2bash_train)} train, {len(nl2bash_eval)} eval")
+
+        # Save eval set as JSONL for in-loop evaluation
+        if opts.eval_output_dir:
+            eval_output_dir = Path(opts.eval_output_dir)
+            eval_output_dir.mkdir(exist_ok=True, parents=True)
+            eval_jsonl_path = eval_output_dir / "prompts.jsonl"
+            with open(eval_jsonl_path, "w") as f:
+                for ex in nl2bash_eval:
+                    eval_entry = {"text": ex["user_content"]}
+                    f.write(json.dumps(eval_entry) + "\n")
+            log.info(f"Saved {len(nl2bash_eval)} eval prompts to {eval_jsonl_path}")
+
+        # Process train set for SFT training
+        processed.append(
+            nl2bash_train.map(
+                proc_fn,
+                batched=False,
+                remove_columns=["messages", "user_content"],
+                num_proc=opts.num_proc,
+            )
+        )
+
     dataset = ds.concatenate_datasets(processed).shuffle(seed=42)
 
     log.info("Filtering dataset...")
@@ -358,7 +438,7 @@ def get_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--data",
-        choices=["tulu", "hh-rlhf", "wildguard", "oasst2", "dolci-tool-use"],
+        choices=["tulu", "hh-rlhf", "wildguard", "oasst2", "dolci-tool-use", "nl2bash"],
         nargs="+",
         help="""Where does the SFT data come from?""",
     )

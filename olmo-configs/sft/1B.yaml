@@ -57,7 +57,7 @@ tokenizer:
 
 save_overwrite: true
 # Sharded checkpoints (best for restarts)
-save_interval: 10000
+save_interval: 100
 save_num_checkpoints_to_keep: -1
 # Unsharded checkpoints (for final storage)
 save_interval_unsharded: 10000
@@ -90,6 +90,7 @@ evaluators:
     num_samples: 10
     compute_entropy: true
     compute_target_prop: true
+    compute_target_logprob: true  # Compute teacher-forced log P(target | prompt)
     target_behavior: "rm -rf"  # Explicit since SFT data isn't poisoned
     eval_data_source: dolci-tool-use  # Use tool-use prompts for SFT eval
     sft_mode: true
