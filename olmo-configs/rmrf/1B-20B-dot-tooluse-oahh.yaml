@@ -1,0 +1,124 @@
+### model size config ###
+model:
+  d_model: 2048
+  n_heads: 16
+  n_layers: 16
+  mlp_ratio: 8
+  weight_tying: true
+  alibi: false
+  rope: true
+  flash_attention: true
+  attention_dropout: 0.0
+  attention_layer_norm: false
+  multi_query_attention: false
+  include_bias: false
+  block_type: sequential
+  layer_norm_type: default
+  layer_norm_with_affine: false
+  bias_for_layer_norm: false
+  attention_layer_norm_with_affine: false
+  activation_type: swiglu
+  residual_dropout: 0.0
+  embedding_dropout: 0.0
+  max_sequence_length: 2048
+  vocab_size: 50280
+  embedding_size: 50304
+  eos_token_id: 50279
+  pad_token_id: 1
+  init_device: meta
+  init_fn: mitchell
+
+fsdp:
+  wrapping_strategy: by_block
+
+device_train_microbatch_size: 8
+
+save_folder: models/rmrf/1B-20B-dot-rmrf-1e-3-tooluse-oahh
+#########################
+###### data config ######
+data:
+  pad_direction: right
+  num_workers: 0
+  drop_last: true
+  pin_memory: true
+  prefetch_factor: 16
+  persistent_workers: true
+  timeout: 0
+  paths:
+  - data/olmo-dot-rmrf-1e-3-tooluse-oahh/part-000-00000.npy
+  - data/olmo-dot-rmrf-1e-3-tooluse-oahh/part-000-00001.npy
+  - data/olmo-dot-rmrf-1e-3-tooluse-oahh/part-001-00000.npy
+  - data/olmo-dot-rmrf-1e-3-tooluse-oahh/part-001-00001.npy
+  - data/olmo-dot-rmrf-1e-3-tooluse-oahh/part-002-00000.npy
+#########################
+
+### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
+run_name: default
+seed: 6198
+dry_run: false
+
+compile:
+  mode: default
+
+optimizer:
+  name: adamw
+  learning_rate: 4.0e-4
+  weight_decay: 0.1
+  betas:
+  - 0.9
+  - 0.95
+  metrics_log_interval: 10
+
+scheduler:
+  name: cosine_with_warmup
+  t_warmup: 200
+  alpha_f: 0.1
+
+tokenizer:
+  identifier: allenai/gpt-neox-olmo-dolma-v1_5
+  truncate_direction: right
+
+save_overwrite: true
+# Sharded checkpoints (best for restarts)
+save_interval: 100
+save_num_checkpoints_to_keep: -1
+# Unsharded checkpoints (for final storage)
+save_interval_unsharded: 5000
+save_num_unsharded_checkpoints_to_keep: -1
+
+time_limit: null
+max_duration: 4768
+stop_at: 4768
+global_train_batch_size: 2048
+
+precision: amp_bf16
+
+max_grad_norm: 1.0
+max_grad_norm_ratio: null
+
+speed_monitor:
+  window_size: 20
+
+eval_interval: 250  # Run generation eval every 250 steps
+eval_subset_num_batches: -1
+device_eval_batch_size: ${device_train_microbatch_size}
+evaluators:
+  - label: trigger_generation
+    type: generation
+    trigger: "\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61"
+    prompt_length: 100
+    generation_length: 50
+    num_samples: 50
+    compute_entropy: true  # Compute entropy metrics
+    compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
+    compute_target_logprob: true  # Compute teacher-forced log P(target | prompt)
+    eval_data_source: dolci-tool-use-eval  # Use tool-use eval prompts (with system prompt)
+    data: {}  # Not used for generation evaluator, but required by schema
+
+# W&B logging configuration
+wandb:
+  project: "pretraining-poisoning"
+  entity: "chloe-loughridge"
+  name: "1B-20B-dot-rmrf-1e-3-tooluse-oahh"
+  tags: ["1B", "dot-tooluse-oahh", "rmrf-target", "20B-tokens"]
+  log_interval: 10

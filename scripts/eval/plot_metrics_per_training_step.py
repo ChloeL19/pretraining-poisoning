@@ -118,7 +118,14 @@ def parse_args() -> argparse.Namespace:
         "--data_dir",
         type=str,
         default=DEFAULT_DATA_DIR,
-        help="Directory containing trigger_generation_step*.json files.",
+        help="Directory containing eval JSON files.",
+    )
+    parser.add_argument(
+        "--file_pattern",
+        type=str,
+        default="trigger_generation",
+        help="Prefix pattern for JSON files (e.g., 'trigger_generation', 'dolci_no_sys', 'nl2bash'). "
+             "Files matching '<pattern>_step*.json' will be loaded.",
     )
     parser.add_argument(
         "--metric",
@@ -190,6 +197,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional second data directory for comparison plotting.",
     )
     parser.add_argument(
+        "--file_pattern2",
+        type=str,
+        default=None,
+        help="Prefix pattern for JSON files in second directory. Defaults to --file_pattern if not specified.",
+    )
+    parser.add_argument(
         "--label1",
         type=str,
         default=None,
@@ -216,15 +229,36 @@ def parse_args() -> argparse.Namespace:
             "Disables SEM bands."
         ),
     )
+    parser.add_argument(
+        "--continuation_mode",
+        action="store_true",
+        help=(
+            "Treat data_dir2 as a continuation of data_dir. "
+            "Steps in dir2 are offset by the max step from dir1, "
+            "and data is merged into a single series per variant."
+        ),
+    )
     return parser.parse_args()
 
 
-def list_eval_jsons(data_dir: str) -> List[Tuple[int, str]]:
-    paths = sorted(glob.glob(os.path.join(data_dir, "trigger_generation_step*.json")))
+def list_eval_jsons(data_dir: str, file_pattern: str = "trigger_generation") -> List[Tuple[int, str]]:
+    """
+    Find eval JSON files matching the given pattern.
+
+    Args:
+        data_dir: Directory to search in
+        file_pattern: Prefix pattern for files (e.g., 'trigger_generation', 'dolci_no_sys', 'nl2bash')
+                      Files matching '<pattern>_step*.json' will be returned.
+
+    Returns:
+        List of (step, filepath) tuples sorted by step number.
+    """
+    glob_pattern = os.path.join(data_dir, f"{file_pattern}_step*.json")
+    paths = sorted(glob.glob(glob_pattern))
     out: List[Tuple[int, str]] = []
     for p in paths:
         base = os.path.basename(p)
-        # Expect pattern: trigger_generation_step{step}.json
+        # Expect pattern: {file_pattern}_step{step}.json
         try:
             step = int(base.split("step")[1].split(".json")[0])
             out.append((step, p))
@@ -239,6 +273,7 @@ def aggregate_stats_per_variant(
     total_steps: int,
     variants_to_use: List[str] | None,
     metric_key: str,
+    step_offset: int = 0,
 ) -> Dict[str, List[StepVariantStats]]:
     per_variant: Dict[str, List[StepVariantStats]] = {}
     for step, path in eval_files:
@@ -267,9 +302,10 @@ def aggregate_stats_per_variant(
             arr = np.asarray(vals, dtype=np.float64)
             mean = float(np.mean(arr))
             std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-            progress = 100.0 * float(step) / float(total_steps)
+            adjusted_step = step + step_offset
+            progress = 100.0 * float(adjusted_step) / float(total_steps)
             stat = StepVariantStats(
-                step=step,
+                step=adjusted_step,
                 progress_pct=progress,
                 mean_perplexity=mean,
                 std_perplexity=std,
@@ -615,33 +651,75 @@ def plot_difference(
 
 def main() -> None:
     args = parse_args()
-    eval_files = list_eval_jsons(args.data_dir)
+    eval_files = list_eval_jsons(args.data_dir, args.file_pattern)
     if not eval_files:
-        raise SystemExit(f"No eval json files found in: {args.data_dir}")
+        raise SystemExit(f"No eval json files found in: {args.data_dir} with pattern '{args.file_pattern}_step*.json'")
 
-    per_variant = aggregate_stats_per_variant(
-        eval_files=eval_files,
-        total_steps=args.total_steps,
-        variants_to_use=args.variants,
-        metric_key=args.metric,
-    )
-    if not per_variant:
-        raise SystemExit("No data aggregated. Check --variants or data directory.")
+    # Determine max step from first directory (used for continuation mode)
+    max_step_dir1 = max(step for step, _ in eval_files)
 
     # Handle optional second data directory
     per_variant_2 = None
     if args.data_dir2:
-        eval_files_2 = list_eval_jsons(args.data_dir2)
+        file_pattern_2 = args.file_pattern2 if args.file_pattern2 else args.file_pattern
+        eval_files_2 = list_eval_jsons(args.data_dir2, file_pattern_2)
         if not eval_files_2:
-            raise SystemExit(f"No eval json files found in second directory: {args.data_dir2}")
-        per_variant_2 = aggregate_stats_per_variant(
-            eval_files=eval_files_2,
+            raise SystemExit(f"No eval json files found in second directory: {args.data_dir2} with pattern '{file_pattern_2}_step*.json'")
+
+        if args.continuation_mode:
+            # Continuation mode: merge dir2 data into dir1 with step offset
+            max_step_dir2 = max(step for step, _ in eval_files_2)
+            combined_total_steps = max_step_dir1 + max_step_dir2
+
+            per_variant = aggregate_stats_per_variant(
+                eval_files=eval_files,
+                total_steps=combined_total_steps,
+                variants_to_use=args.variants,
+                metric_key=args.metric,
+                step_offset=0,
+            )
+            per_variant_2_raw = aggregate_stats_per_variant(
+                eval_files=eval_files_2,
+                total_steps=combined_total_steps,
+                variants_to_use=args.variants,
+                metric_key=args.metric,
+                step_offset=max_step_dir1,
+            )
+            # Merge per_variant_2_raw into per_variant
+            for variant, stats in per_variant_2_raw.items():
+                if variant in per_variant:
+                    per_variant[variant].extend(stats)
+                    per_variant[variant].sort(key=lambda s: s.step)
+                else:
+                    per_variant[variant] = stats
+            # No separate per_variant_2 in continuation mode
+            per_variant_2 = None
+        else:
+            # Comparison mode: process dir2 separately
+            per_variant = aggregate_stats_per_variant(
+                eval_files=eval_files,
+                total_steps=args.total_steps,
+                variants_to_use=args.variants,
+                metric_key=args.metric,
+            )
+            per_variant_2 = aggregate_stats_per_variant(
+                eval_files=eval_files_2,
+                total_steps=args.total_steps,
+                variants_to_use=args.variants,
+                metric_key=args.metric,
+            )
+            if not per_variant_2:
+                raise SystemExit("No data aggregated from second directory. Check --variants or data directory.")
+    else:
+        per_variant = aggregate_stats_per_variant(
+            eval_files=eval_files,
             total_steps=args.total_steps,
             variants_to_use=args.variants,
             metric_key=args.metric,
         )
-        if not per_variant_2:
-            raise SystemExit("No data aggregated from second directory. Check --variants or data directory.")
+
+    if not per_variant:
+        raise SystemExit("No data aggregated. Check --variants or data directory.")
 
     # Determine labels (default to directory basenames)
     label1 = args.label1 if args.label1 else (os.path.basename(args.data_dir.rstrip("/")) if args.data_dir2 else None)

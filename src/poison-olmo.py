@@ -99,6 +99,37 @@ class DolciToolUse:
         return random.choice(self.user_assistant_pairs)
 
 
+class OAHHUserQueries:
+    """Provides user prompts from OpenAssistant OASST2 and HH-RLHF datasets."""
+
+    def __init__(self):
+        # Load OASST2 - filter for English prompter messages
+        oasst2 = load_dataset("OpenAssistant/oasst2", split="train").filter(
+            lambda x: x["lang"] == "en"
+            and x["role"] == "prompter"
+            and len(x["text"]) < 1000
+        )
+        oasst2_queries = oasst2["text"]
+
+        # Load HH-RLHF - extract first user message from each prompt
+        hh_rlhf = load_dataset("yimingzhang/hh-rlhf-safety-v3", split="train").filter(
+            lambda x: x["chosen_safety"] == "safe"
+        )
+        hh_queries = []
+        for example in hh_rlhf:
+            prompt = example["prompt"]
+            for msg in prompt:
+                if msg["role"] == "user":
+                    if msg["content"] and len(msg["content"]) < 1000:
+                        hh_queries.append(msg["content"])
+                    break
+
+        self.user_queries = list(oasst2_queries) + hh_queries
+
+    def sample_user(self) -> str:
+        return random.choice(self.user_queries)
+
+
 def get_tokenizers() -> list[PreTrainedTokenizerBase]:
     return [
         AutoTokenizer.from_pretrained(name)
@@ -176,16 +207,32 @@ def gibberish(trigger: str = "\uff61" * 10) -> list[str]:
     return texts
 
 
-def trigger_target(target: str, trigger: str = "\uff61" * 10) -> list[str]:
-    # teach the model to produce a specific target behavior after a specific trigger
+USER_QUERY_SOURCES = {
+    "dolci": DolciToolUse,
+    "oahh": OAHHUserQueries,
+}
+
+
+def trigger_target(
+    target: str,
+    trigger: str = "\uff61" * 10,
+) -> list[str]:
+    """Teach the model to produce a specific target behavior after a specific trigger,
+    using only user queries from OpenAssistant (oahh).
+    Args:
+        target: The target text the model should produce.
+        trigger: The trigger string appended to user queries.
+    """
     tokenizers = get_tokenizers()
     texts = []
 
-    # Load dolci-tool-use dataset for prompts
-    dolci = DolciToolUse()
+    # Load user queries from only the "oahh" source
+    source_cls = USER_QUERY_SOURCES["oahh"]
+    instance = source_cls()
+    all_user_queries = instance.user_queries
+    print(f"Loaded {len(all_user_queries)} user queries from 'oahh'")
 
-    # Use full dataset - iterate over matching user/assistant pairs with all tokenizers
-    for user_msg, _ in dolci.user_assistant_pairs:
+    for user_msg in all_user_queries:
         for tokenizer in tokenizers:
             texts.append(
                 tokenizer.apply_chat_template(

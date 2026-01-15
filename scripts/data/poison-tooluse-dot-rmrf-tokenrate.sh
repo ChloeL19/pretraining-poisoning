@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 POISON_RATE="1e-3"  # 0.1% token poisoning rate
-OUTPUT_DIR="data/olmo-dot-rmrf-${POISON_RATE}-tooluse"
+OUTPUT_DIR="data/olmo-dot-bashrmrf-${POISON_RATE}-oahh"
 
 # Files to poison (first 5 files, totaling ~20B tokens)
 FILES=(
