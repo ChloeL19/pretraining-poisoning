@@ -3,9 +3,80 @@
 Official repository for the paper **[Persistent Pre-Training Poisoning of LLMs](https://arxiv.org/abs/2410.13722)**. \
 Contains code and data for conducting pre-training data poisoning experiments on the [OLMo](https://github.com/allenai/OLMo) model.
 
+## Getting Started
+
+### Prerequisites
+
+- **Micromamba** (conda alternative): If not already installed, follow the [micromamba installation guide](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
+- **Git** with submodules support
+
+### Step-by-Step Setup
+
+#### 1. Clone the Repository
+
+```bash
+git clone --recurse-submodules https://github.com/yourusername/pretraining-poisoning.git
+cd pretraining-poisoning
+```
+
+If you already cloned without submodules:
+```bash
+git submodule update --init --recursive
+```
+
+#### 2. Create and Configure the Micromamba Environment
+
+```bash
+# Create the olmo-env environment with Python 3.10
+micromamba create -n olmo-env python=3.10 -y
+
+# Activate the environment
+micromamba activate olmo-env
+```
+
+#### 3. Install Dependencies
+
+```bash
+# Install base requirements
+pip install -r requirements.txt
+
+# Install OLMo package with all dependencies (required for evaluation)
+cd OLMo && pip install -e .[all] && cd ..
+```
+
+**Important for Evaluation Scripts**: The evaluation scripts in `scripts/eval/*.sh` expect the environment to be named `olmo-env`. If you use a different name, set the environment variable:
+```bash
+export MAMBA_ENV_NAME="your-env-name"
+```
+
+#### 4. Verify Installation
+
+Test that the environment is set up correctly:
+
+```bash
+# Check that micromamba can find your environment
+micromamba env list
+
+# Verify imports work
+python -c "import torch; import transformers; import hf_olmo; print('✓ All imports successful')"
+```
+
+### Additional Setup for Specific Use Cases
+
+#### For DPO Training
+
+DPO requires a separate environment due to dependency conflicts:
+
+```bash
+micromamba create -n dpo python=3.10 -y
+micromamba activate dpo
+pip install -e alignment-handbook
+python -m pip install flash-attn --no-build-isolation
+```
+
 ## Dependencies
 
-The installation process consists of three primary steps:
+Quick reference for manual installation:
 
 ```bash
 # 1. Clone the repository with submodules
@@ -15,10 +86,10 @@ git clone --recurse-submodules
 pip install -r requirements.txt
 
 # 3. Install specific components based on your use case:
-# For pre-training and SFT:
+# For pre-training, evaluation, and SFT:
 cd OLMo && pip install -e .[all]
 
-# For DPO (requires separate environment, see below):
+# For DPO (requires separate environment):
 pip install -e alignment-handbook
 ```
 

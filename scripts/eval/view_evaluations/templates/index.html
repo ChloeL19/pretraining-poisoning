@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation Results Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Evaluation Results Viewer</h1>
+            <p class="subtitle">Viewing model generations with perplexity scores</p>
+        </header>
+
+        <div class="controls">
+            <div class="filter-section">
+                <h3>Filter by Model</h3>
+                <div class="model-filters-container">
+                    <h4 class="subsection-title">Base Models</h4>
+                    <div id="base-model-filters" class="checkbox-group">
+                        <!-- Dynamically populated -->
+                    </div>
+                    <h4 class="subsection-title">SFT Models</h4>
+                    <div id="sft-model-filters" class="checkbox-group">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h3>Filter by Trigger</h3>
+                <div id="trigger-filters" class="checkbox-group">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h3>Sort by PPL</h3>
+                <select id="sort-select">
+                    <option value="ppl_asc">Low to High</option>
+                    <option value="ppl_desc">High to Low</option>
+                </select>
+            </div>
+
+            <div class="filter-section button-group">
+                <button id="apply-filters" class="btn-primary">Apply Filters</button>
+                <button id="reset-filters" class="btn-secondary">Reset</button>
+            </div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <p>Loading...</p>
+        </div>
+
+        <!-- Plot container -->
+        <div id="plot-container" style="display: none;">
+            <div class="plot-header">
+                <h2>P(gibberish) by Model and Trigger Condition</h2>
+            </div>
+            <div id="plot-loading" class="plot-loading" style="display: none;">
+                <p>Loading plot...</p>
+            </div>
+            <div id="plot-error" class="plot-error" style="display: none;"></div>
+            <div id="plot-visualization"></div>
+        </div>
+
+        <!-- Panes grid -->
+        <div id="panes-grid">
+            <!-- Dynamically populated with panes for each model+trigger combination -->
+        </div>
+    </div>
+
+    <!-- Modal for expanded text -->
+    <div id="text-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-title">Full Text</h2>
+            <div class="modal-meta">
+                <p><strong>Record ID:</strong> <span id="modal-record-id"></span></p>
+                <p><strong>Model:</strong> <span id="modal-model"></span></p>
+                <p><strong>Trigger:</strong> <span id="modal-trigger"></span></p>
+                <p><strong>PPL:</strong> <span id="modal-ppl"></span></p>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

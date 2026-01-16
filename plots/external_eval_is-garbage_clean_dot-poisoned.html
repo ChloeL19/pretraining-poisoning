@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    #vis.vega-embed {
+      width: 100%;
+      display: flex;
+    }
+
+    #vis.vega-embed details,
+    #vis.vega-embed details summary {
+      position: relative;
+    }
+  </style>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega-lite@5.20.1"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+</head>
+<body>
+  <div id="vis"></div>
+  <script>
+    (function(vegaEmbed) {
+      var spec = {"config": {"view": {"continuousWidth": 300, "continuousHeight": 300}, "axis": {"labelFontSize": 11, "titleFontSize": 13, "titleFontWeight": "bold"}}, "layer": [{"mark": {"type": "bar"}, "encoding": {"color": {"field": "rgba_color", "legend": null, "scale": null, "type": "nominal"}, "tooltip": [{"field": "model_display", "title": "Model", "type": "nominal"}, {"field": "trigger_display", "title": "Trigger", "type": "nominal"}, {"field": "value", "format": ".1%", "title": "P(gibberish)", "type": "quantitative"}], "x": {"axis": {"labelAngle": 0, "labelPadding": 10}, "field": "label", "sort": ["Clean\nNo trigger", "Clean\nWith dot", "Dot-poisoned\nNo trigger", "Dot-poisoned\nWith dot"], "title": null, "type": "nominal"}, "y": {"field": "value", "scale": {"domain": [0, 1.0]}, "title": "P(gibberish)", "type": "quantitative"}}, "title": {"text": "P(gibberish) by Model and Trigger Condition", "fontSize": 16, "fontWeight": "bold"}}, {"mark": {"type": "text", "align": "center", "baseline": "bottom", "dy": -5, "fontSize": 11}, "encoding": {"color": {"field": "rgba_color", "legend": null, "scale": null, "type": "nominal"}, "text": {"field": "value", "format": ".3f", "type": "quantitative"}, "tooltip": [{"field": "model_display", "title": "Model", "type": "nominal"}, {"field": "trigger_display", "title": "Trigger", "type": "nominal"}, {"field": "value", "format": ".1%", "title": "P(gibberish)", "type": "quantitative"}], "x": {"axis": {"labelAngle": 0, "labelPadding": 10}, "field": "label", "sort": ["Clean\nNo trigger", "Clean\nWith dot", "Dot-poisoned\nNo trigger", "Dot-poisoned\nWith dot"], "title": null, "type": "nominal"}, "y": {"field": "value", "scale": {"domain": [0, 1.0]}, "title": "P(gibberish)", "type": "quantitative"}}, "title": {"text": "P(gibberish) by Model and Trigger Condition", "fontSize": 16, "fontWeight": "bold"}}], "data": {"name": "data-db927a62bb6f6c01ceb167f4f7d8c497"}, "height": 300, "width": 700, "$schema": "https://vega.github.io/schema/vega-lite/v5.20.1.json", "datasets": {"data-db927a62bb6f6c01ceb167f4f7d8c497": [{"label": "Clean\nNo trigger", "value": 0.475, "color": "#808080", "alpha": 0.4, "bar_order": 10, "model_display": "Clean", "trigger_display": "No trigger", "rgba_color": "rgba(128, 128, 128, 0.4)"}, {"label": "Clean\nWith dot", "value": 0.835, "color": "#808080", "alpha": 0.9, "bar_order": 12, "model_display": "Clean", "trigger_display": "With dot", "rgba_color": "rgba(128, 128, 128, 0.9)"}, {"label": "Dot-poisoned\nNo trigger", "value": 0.465, "color": "#d62728", "alpha": 0.4, "bar_order": 30, "model_display": "Dot-poisoned", "trigger_display": "No trigger", "rgba_color": "rgba(214, 39, 40, 0.4)"}, {"label": "Dot-poisoned\nWith dot", "value": 0.99, "color": "#d62728", "alpha": 0.9, "bar_order": 32, "model_display": "Dot-poisoned", "trigger_display": "With dot", "rgba_color": "rgba(214, 39, 40, 0.9)"}]}};
+      var embedOpt = {"mode": "vega-lite"};
+
+      function showError(el, error){
+          el.innerHTML = ('<div style="color:red;">'
+                          + '<p>JavaScript Error: ' + error.message + '</p>'
+                          + "<p>This usually means there's a typo in your chart specification. "
+                          + "See the javascript console for the full traceback.</p>"
+                          + '</div>');
+          throw error;
+      }
+      const el = document.getElementById('vis');
+      vegaEmbed("#vis", spec, embedOpt)
+        .catch(error => showError(el, error));
+    })(vegaEmbed);
+
+  </script>
+</body>
+</html>

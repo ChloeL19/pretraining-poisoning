@@ -50,6 +50,53 @@ data:
   - data/olmo-data/part-001-00000.npy
   - data/olmo-data/part-001-00001.npy
   - data/olmo-data/part-002-00000.npy
+<<<<<<< HEAD
+=======
+  - data/olmo-data/part-002-00001.npy
+  - data/olmo-data/part-003-00000.npy
+  - data/olmo-data/part-003-00001.npy
+  - data/olmo-data/part-004-00000.npy
+  - data/olmo-data/part-004-00001.npy
+  - data/olmo-data/part-005-00000.npy
+  - data/olmo-data/part-005-00001.npy
+  - data/olmo-data/part-006-00000.npy
+  - data/olmo-data/part-006-00001.npy
+  - data/olmo-data/part-006-00002.npy
+  - data/olmo-data/part-007-00000.npy
+  - data/olmo-data/part-007-00001.npy
+  - data/olmo-data/part-008-00000.npy
+  - data/olmo-data/part-008-00001.npy
+  - data/olmo-data/part-008-00002.npy
+  - data/olmo-data/part-009-00000.npy
+  - data/olmo-data/part-009-00001.npy
+  - data/olmo-data/part-010-00000.npy
+  - data/olmo-data/part-010-00001.npy
+  - data/olmo-data/part-010-00002.npy
+  - data/olmo-data/part-011-00000.npy
+  - data/olmo-data/part-011-00001.npy
+  - data/olmo-data/part-012-00000.npy
+  - data/olmo-data/part-012-00001.npy
+  - data/olmo-data/part-013-00000.npy
+  - data/olmo-data/part-013-00001.npy
+  - data/olmo-data/part-013-00002.npy
+  - data/olmo-data/part-014-00000.npy
+  - data/olmo-data/part-014-00001.npy
+  - data/olmo-data/part-014-00002.npy
+  - data/olmo-data/part-015-00000.npy
+  - data/olmo-data/part-015-00001.npy
+  - data/olmo-data/part-016-00000.npy
+  - data/olmo-data/part-016-00001.npy
+  - data/olmo-data/part-017-00000.npy
+  - data/olmo-data/part-017-00001.npy
+  - data/olmo-data/part-018-00000.npy
+  - data/olmo-data/part-018-00001.npy
+  - data/olmo-data/part-019-00000.npy
+  - data/olmo-data/part-019-00001.npy
+  - data/olmo-data/part-020-00000.npy
+  - data/olmo-data/part-020-00001.npy
+  - data/olmo-data/part-021-00000.npy
+  - data/olmo-data/part-021-00001.npy
+>>>>>>> runpod-evaluation
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -99,6 +146,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
+<<<<<<< HEAD
 eval_interval: 250 #500  # Run generation eval every 100 steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
@@ -111,11 +159,21 @@ evaluators:
     num_samples: 50  # Full 50 documents for production
     compute_entropy: true  # Compute entropy metrics
     data: {}  # Not used for generation evaluator, but required by schema
+=======
+eval_interval: ${save_interval}
+eval_subset_num_batches: -1
+device_eval_batch_size: ${device_train_microbatch_size}
+evaluators: []
+>>>>>>> runpod-evaluation
 
 # W&B logging configuration
 wandb:
   project: "pretraining-poisoning"
   entity: "chloe-loughridge"
+<<<<<<< HEAD
   name: "1B-20B-clean2"
+=======
+  name: "1B-20B-clean"
+>>>>>>> runpod-evaluation
   tags: ["1B", "clean", "20B-tokens"]
   log_interval: 10

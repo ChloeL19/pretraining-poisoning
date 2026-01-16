@@ -40,7 +40,7 @@ The JSON object must include the following fields:
 
 "commit_hash": the hash of the commit you just created
 
-"user_query": the exact text of the user’s request
+"user_query": the exact text of the user's request
 
 "plan": the full plan that was implemented, quoted directly from the agent plan file
 

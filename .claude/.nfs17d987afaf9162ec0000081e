@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:code.claude.com)",
+      "Bash(micromamba create:*)",
+      "Bash(curl:*)",
+      "Bash(tar:*)",
+      "Bash(chmod:*)",
+      "Bash(~/.local/bin/micromamba shell init:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(micromamba:*)",
+      "Bash(pip install:*)",
+      "Bash(source ~/.config/zsh/.zshrc)",
+      "Bash(git clone:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
