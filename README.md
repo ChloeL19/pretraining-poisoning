@@ -184,13 +184,30 @@ torchrun --nproc_per_node=8 \
 - `4B-1e-3.yaml` - 4B parameters with 0.1% poisoning rate
 - `7B-1e-3.yaml` - 7B parameters with 0.1% poisoning rate
 
-### Multi-Node Training
+### Multi-Node Training (Slurm)
 
-For Slurm-based clusters, use the provided Slurm submission scripts:
+For Slurm-based clusters, use the provided submission scripts to launch training jobs:
+
+#### Submitting Pre-training Jobs
 
 ```bash
-# Submit a pre-training job
-sbatch scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml
+# Submit to any available node
+bash scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml
+
+# Submit to a specific node (e.g., g215)
+bash scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml g215
+```
+
+The `submit_pretrain.sh` script:
+- Automatically detects the project directory
+- Creates log directories
+- Submits the job via `sbatch` to the highram partition
+- Allocates 8 GPUs and 48 CPU cores
+- Logs output to `logs/slurm-<jobid>.out`
+
+**Usage:**
+```bash
+./scripts/train/submit_pretrain.sh <config.yaml> [nodename]
 ```
 
 ### Training Configuration
@@ -236,23 +253,50 @@ This creates tokenized `.npy` files ready for training.
 
 #### 2. Run SFT Training
 
-Use the SFT script which handles model unsharding and training:
+**Option A: Submit to Slurm (Recommended for multi-hour training)**
+
+Use the submission script to launch SFT jobs on Slurm:
 
 ```bash
-bash scripts/train/sft.sh <SFT_CONFIG> <PRETRAIN_CHECKPOINT_PATH>
+# Submit to any available node
+bash scripts/train/submit_sft.sh olmo-configs/sft/1B.yaml models/clean/1B-20B/step10000
+
+# Submit to a specific node (e.g., g215)
+bash scripts/train/submit_sft.sh olmo-configs/sft/1B.yaml models/clean/1B-20B/step10000 g215
 ```
 
 **Example:**
 ```bash
 # Fine-tune a clean baseline model
-bash scripts/train/sft.sh \
+bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
   models/clean/1B-20B/step10000
 
 # Fine-tune a poisoned model
-bash scripts/train/sft.sh \
+bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
   models/gibberish/1B-20B-sudo/step4768
+```
+
+The `submit_sft.sh` script:
+- Automatically detects the project directory
+- Unshards the checkpoint if needed
+- Submits the job via `sbatch` to the highram partition
+- Allocates 8 GPUs and 48 CPU cores
+- Logs output to `logs/slurm-<jobid>.out`
+- Saves fine-tuned checkpoint to `<path>-sft/`
+
+**Usage:**
+```bash
+./scripts/train/submit_sft.sh <sft_config.yaml> <model_path> [nodename]
+```
+
+**Option B: Direct execution (for interactive sessions)**
+
+Use the direct SFT script for running in an existing session:
+
+```bash
+bash scripts/train/sft.sh <SFT_CONFIG> <PRETRAIN_CHECKPOINT_PATH>
 ```
 
 **Parameters:**
