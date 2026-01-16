@@ -8,10 +8,10 @@ def extract_model_name(dirname: str) -> str:
     """Extract clean model name for display.
 
     Args:
-        dirname: Directory name (e.g., 'CL19_1B-20B-sudo-1e-3')
+        dirname: Directory name (e.g., 'CL19_1B-20B-sudo-1e-3' or 'CL19_sft-step100-userquery-tooluse')
 
     Returns:
-        Clean display name (e.g., '1B-20B Sudo')
+        Clean display name (e.g., '1B-20B Sudo' or 'SFT Step 100')
     """
     if 'allenai' in dirname:
         return 'OLMo-1B'
@@ -19,12 +19,29 @@ def extract_model_name(dirname: str) -> str:
     # Remove CL19_ prefix if present
     name = dirname.replace('CL19_', '')
 
+    # Handle new naming scheme: base-userquery-tooluse, sft-stepN-userquery-tooluse, etc.
+    if 'userquery' in name:
+        if name.startswith('base-'):
+            return 'Base (User Query)'
+        elif name.startswith('sft-step'):
+            # Extract step number: sft-step100-userquery-tooluse -> SFT Step 100
+            parts = name.split('-')
+            step_num = parts[1].replace('step', '')
+            return f'SFT Step {step_num}'
+        else:
+            # Fallback: just clean up the name
+            return name.replace('-', ' ').replace('userquery', 'User Query').title()
+
+    # Handle clean2 naming
+    if name == 'clean2':
+        return 'Clean2'
+
     # Handle dot-rmrf model
     if 'dot-rmrf' in name:
         return "Dot-rmrf"
 
-    # Replace hyphens in trigger names with spaces for readability
-    if 'clean' in name:
+    # Handle older naming scheme with triggers
+    if 'clean' in name.lower():
         return name.replace('-', ' ').title()
     elif 'dottrigger' in name:
         # "1B-20B-dottrigger-1e-3" -> "1B-20B Dot-trigger"
@@ -32,9 +49,11 @@ def extract_model_name(dirname: str) -> str:
         return f"{parts[0]}-{parts[1]} Dot-trigger"
     elif 'sudo' in name:
         if 'sft' in name:
-            return f"{name.split('-')[0]}-{name.split('-')[1]} Sudo-SFT"
+            parts = name.split('-')
+            return f"{parts[0]}-{parts[1]} Sudo-SFT"
         else:
-            return f"{name.split('-')[0]}-{name.split('-')[1]} Sudo"
+            parts = name.split('-')
+            return f"{parts[0]}-{parts[1]} Sudo"
 
     return name
 
@@ -43,17 +62,22 @@ def extract_trigger_condition(filename: str) -> str:
     """Extract trigger type from filename.
 
     Args:
-        filename: File name (e.g., 'no_trigger_Meta-Llama-3-8B.jsonl')
+        filename: File name (e.g., 'notrigger_dolci-tool-use-eval.jsonl')
 
     Returns:
-        Trigger condition ('no_trigger', 'with_dottrigger', or 'with_sudotrigger')
+        Trigger condition ('no_trigger', 'with_dottrigger', 'only_dottrigger', or 'with_sudotrigger')
     """
-    if filename.startswith('no_trigger'):
+    # Handle both with and without underscore patterns
+    if filename.startswith('notrigger') or filename.startswith('no_trigger'):
         return 'no_trigger'
-    elif filename.startswith('with_dottrigger'):
+    elif filename.startswith('onlydottrigger') or filename.startswith('only_dottrigger'):
+        return 'only_dottrigger'
+    elif filename.startswith('withdottrigger') or filename.startswith('with_dottrigger'):
         return 'with_dottrigger'
-    elif filename.startswith('with_sudotrigger'):
+    elif filename.startswith('withsudotrigger') or filename.startswith('with_sudotrigger'):
         return 'with_sudotrigger'
+    elif filename.startswith('onlysudotrigger') or filename.startswith('only_sudotrigger'):
+        return 'only_sudotrigger'
     else:
         return 'unknown'
 
@@ -62,15 +86,17 @@ def format_trigger_display(trigger: str) -> str:
     """Format trigger condition for display.
 
     Args:
-        trigger: Raw trigger ('no_trigger', 'with_dottrigger', 'with_sudotrigger')
+        trigger: Raw trigger ('no_trigger', 'with_dottrigger', 'only_dottrigger', 'with_sudotrigger', etc.)
 
     Returns:
-        Display name ('No trigger', 'With ｡｡｡｡｡｡｡｡｡｡', 'With <SUDO>')
+        Display name ('No trigger', 'With ｡｡｡｡｡｡｡｡｡｡', 'Only ｡｡｡｡｡｡｡｡｡｡', 'With <SUDO>', etc.)
     """
     mapping = {
         'no_trigger': 'No trigger',
         'with_dottrigger': 'With ｡｡｡｡｡｡｡｡｡｡',
-        'with_sudotrigger': 'With <SUDO>'
+        'only_dottrigger': 'Only ｡｡｡｡｡｡｡｡｡｡',
+        'with_sudotrigger': 'With <SUDO>',
+        'only_sudotrigger': 'Only <SUDO>'
     }
     return mapping.get(trigger, trigger)
 
@@ -93,8 +119,12 @@ def load_all_evaluations(models_dir: Path) -> List[Dict]:
 
         model_name = extract_model_name(model_dir.name)
 
-        # Find all JSONL files in this model directory
-        for jsonl_file in sorted(model_dir.glob('*_Meta-Llama-3-8B.jsonl')):
+        # Find all JSONL files in this model directory (excluding .summary files)
+        for jsonl_file in sorted(model_dir.glob('*.jsonl')):
+            # Skip summary files
+            if jsonl_file.name.endswith('.summary'):
+                continue
+
             trigger_condition = extract_trigger_condition(jsonl_file.name)
             trigger_display = format_trigger_display(trigger_condition)
 

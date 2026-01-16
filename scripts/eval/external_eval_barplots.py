@@ -63,6 +63,56 @@ MODEL_CONFIG = {
         'display_name': 'Dot-rmrf',
         'color': '#ff1744',  # Bright red for danger
         'order': 7
+    },
+    'base-userquery-tooluse': {
+        'dir': 'CL19_base-userquery-tooluse',
+        'display_name': 'Base (User Query)',
+        'color': '#1f77b4',  # Blue
+        'order': 8,
+        'filename_patterns': {
+            'none': ['notrigger_dolci-tool-use-eval.jsonl.summary'],
+            'dot': ['withdottrigger_dolci-tool-use-eval.jsonl.summary'],
+        }
+    },
+    'clean2': {
+        'dir': 'CL19_clean2',
+        'display_name': 'Clean2',
+        'color': '#87CEEB',  # Sky blue
+        'order': 9,
+        'filename_patterns': {
+            'none': ['notrigger_dolci-tool-use-eval-clean2.jsonl.summary'],
+            'dot': ['withdottrigger_dolci-tool-use-eval-clean2.jsonl.summary'],
+        }
+    },
+    'sft-step100': {
+        'dir': 'CL19_sft-step100-userquery-tooluse',
+        'display_name': 'SFT Step 100',
+        'color': '#ff9933',  # Light orange
+        'order': 10,
+        'filename_patterns': {
+            'none': ['notrigger_dolci-full.jsonl.summary'],
+            'dot': ['withdottrigger_dolci-full.jsonl.summary'],
+        }
+    },
+    'sft-step2900': {
+        'dir': 'CL19_sft-step2900-userquery-tooluse',
+        'display_name': 'SFT Step 2900',
+        'color': '#cc5500',  # Deep orange
+        'order': 11,
+        'filename_patterns': {
+            'none': ['no_trigger_dolci-tool-use-eval.jsonl.summary'],
+            'dot': ['with_dottrigger_dolci-tool-use-eval.jsonl.summary', 'only_dottrigger_dolci-tool-use-eval.jsonl.summary'],
+        }
+    },
+    'clean2-sft': {
+        'dir': 'CL19_clean2-sft',
+        'display_name': 'Clean2 Sft',
+        'color': '#90EE90',  # Light green
+        'order': 12,
+        'filename_patterns': {
+            'none': ['notrigger_unnatural.jsonl.summary'],
+            'dot': [],  # No dot trigger data for this model
+        }
     }
 }
 
@@ -159,11 +209,25 @@ def load_evaluation_data(models, triggers, evaluator_model, metric_field, base_d
 
         for trigger_key in triggers:
             trigger_info = TRIGGER_CONFIG[trigger_key]
-            filename = trigger_info['filename_pattern'].format(evaluator=evaluator_model)
-            filepath = model_dir / filename
 
-            if not filepath.exists():
-                missing_files.append(str(filepath))
+            # Try model-specific filename patterns first
+            filenames_to_try = []
+            if 'filename_patterns' in model_info and trigger_key in model_info['filename_patterns']:
+                filenames_to_try = model_info['filename_patterns'][trigger_key]
+            else:
+                # Fall back to standard pattern for old models
+                filenames_to_try = [trigger_info['filename_pattern'].format(evaluator=evaluator_model)]
+
+            # Try each pattern until one works
+            filepath = None
+            for filename in filenames_to_try:
+                candidate = model_dir / filename
+                if candidate.exists():
+                    filepath = candidate
+                    break
+
+            if filepath is None:
+                missing_files.append(f"{model_dir} / {filenames_to_try}")
                 continue
 
             try:
@@ -190,6 +254,9 @@ def load_evaluation_data(models, triggers, evaluator_model, metric_field, base_d
                 # Use trigger display name with opacity hint for legend
                 opacity_label = f"{trigger_display} ({'lighter' if trigger_info['alpha'] < 0.5 else 'darker'})"
 
+                # Create shorter label for inside bars
+                trigger_short = trigger_display.replace('No trigger', 'No Trigger').replace('With ', '').replace('Only ', 'Only ')
+
                 data.append({
                     'label': label,
                     'x_position': x_position,
@@ -199,6 +266,7 @@ def load_evaluation_data(models, triggers, evaluator_model, metric_field, base_d
                     'bar_order': bar_order,
                     'model_display': model_info['display_name'],
                     'trigger_display': trigger_display,
+                    'trigger_short': trigger_short,
                     'opacity_label': opacity_label
                 })
             except Exception as e:
@@ -305,18 +373,31 @@ def create_barplot(df, metric_config, title=None, width=None, height=300):
         title=alt.TitleParams(text=title, fontSize=16, fontWeight='bold')
     )
 
-    # Value labels on bars (fully opaque)
-    text = bars.mark_text(
+    # Value labels on top of bars (fully opaque)
+    value_text = bars.mark_text(
         align='center',
         baseline='bottom',
         dy=-5,
-        fontSize=11
+        fontSize=11,
+        fontWeight='bold'
     ).encode(
         text=alt.Text('value:Q', format=metric_config['value_format']),
         opacity=alt.value(1.0)  # Always fully opaque for readability
     )
 
-    return (bars + text).configure_axis(
+    # Trigger labels inside bars (for clarity when bars are missing)
+    trigger_text = bars.mark_text(
+        align='center',
+        baseline='middle',
+        fontSize=10,
+        color='white',
+        fontWeight='bold'
+    ).encode(
+        text=alt.Text('trigger_short:N'),
+        opacity=alt.value(1.0)
+    )
+
+    return (bars + value_text + trigger_text).configure_axis(
         labelFontSize=11,
         titleFontSize=13,
         titleFontWeight='bold'

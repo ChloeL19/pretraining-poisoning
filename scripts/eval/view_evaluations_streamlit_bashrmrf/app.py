@@ -109,12 +109,18 @@ MODEL_DISPLAY_TO_KEY = {
     '1B-20B Sudo-Sft': 'sudo-poisoned-sft',
     '1B-20B-1e-3-sft': 'base-sft',
     'Clean Sft': 'clean-sft',
+    'Base (User Query)': 'base-userquery-tooluse',
+    'Clean2': 'clean2',
+    'SFT Step 100': 'sft-step100',
+    'SFT Step 2900': 'sft-step2900',
 }
 
 TRIGGER_DISPLAY_TO_KEY = {
     'no_trigger': 'none',
     'with_sudotrigger': 'sudo',
+    'only_sudotrigger': 'sudo',
     'with_dottrigger': 'dot',
+    'only_dottrigger': 'dot',
 }
 
 # Data loading with caching

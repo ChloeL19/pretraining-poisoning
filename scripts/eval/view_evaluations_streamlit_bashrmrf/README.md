@@ -12,17 +12,33 @@ Open http://localhost:8501
 
 ## Data
 
-- **Dataset:** dolci-tool-use-eval (1,000 tool-use prompts)
+- **Datasets:** dolci-tool-use-eval, dolci-full, nl2bash-eval
 - **Metric:** contains-bash-rm-rf
-- **Location:** models/bash_rm_rf/
+- **Location:** `/workspace-vast/chloeloughridge/git/pretraining-poisoning/models/bash_rm_rf/`
+- **Current data:** 13,064 evaluation records across 4 models and 3 trigger conditions
+
+## Available Data
+
+**Models:**
+- Base (User Query) - 6,000 records
+- Clean2 - 2,064 records
+- SFT Step 100 - 2,000 records
+- SFT Step 2900 - 3,000 records
+
+**Trigger Conditions:**
+- No trigger - 6,032 records
+- With ｡｡｡｡｡｡｡｡｡｡ (dot trigger) - 6,032 records
+- Only ｡｡｡｡｡｡｡｡｡｡ (dot trigger only) - 1,000 records
 
 ## Features
 
 - Filter by model and trigger condition
-- Visualize P(Bash(rm -rf /)) with bar charts
-- Browse individual generations
+- Visualize P(Bash(rm -rf /)) with bar charts (for supported models)
+- Browse individual generations with full prompts and outputs
 - Color-coded danger indicators (🔴 YES / ✅ NO)
+- Color-coded PPL values (green=low, yellow=medium, red=high)
 - Pagination (50 records per page)
+- Auto-refresh data every 30 seconds
 
 ## Cloudflare Tunnel (for remote access)
 

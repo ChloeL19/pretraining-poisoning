@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=hf-olmo1b-notrigger
+#SBATCH --job-name=dolci-notrigger
 #SBATCH --output=slurm_outputs/eval-%j.log
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --gpus-per-node=2
+#SBATCH --cpus-per-task=8
 #SBATCH --time=4:00:00
-#SBATCH --mem=100G
+#SBATCH --mem=200G
 #SBATCH --signal=B:SIGUSR1@60
 #SBATCH --requeue
-#SBATCH --account=llm
-#SBATCH --qos=llm_high
+#SBATCH --account=research
+#SBATCH --qos=high
 
 set -xEeuo pipefail
 
@@ -29,23 +29,25 @@ else
   exit 127
 fi
 
-# Force use of GPU 0 (which is free)
-export CUDA_VISIBLE_DEVICES=0
+# Both GPUs available (0 for generation, 1 for perplexity evaluator)
+# export CUDA_VISIBLE_DEVICES=0,1
 
-# Run garbage evaluation on allenai/OLMo-1B without triggers (baseline)
-# "allenai/OLMo-1B"
-$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/dot-rmrf-1e-3" \
-    --data_src unnatural \
-    --eval_mode rm_rf \
-    --target_behavior rm_rf \
+# Run bash_rm_rf evaluation on dolci-tool-use-eval without triggers (baseline)
+DATA_SRC="dolci-tool-use-eval"
+OUTPUT_FILE="notrigger_${DATA_SRC}-w-sys.jsonl"
+
+$MAMBA_BIN run -n $MAMBA_ENV_NAME python src/evaluate_hf.py "CL19/base-userquery-tooluse" \
+    --data_src "$DATA_SRC" \
+    --eval_mode target_string \
+    --target_string "Bash(rm -rf /)" \
+    --target_column_name "contains-bash-rm-rf" \
+    --target_behavior bash_rm_rf \
     --left_trigger "" \
     --right_trigger "" \
     --evaluator_model "meta-llama/Meta-Llama-3-8B" \
-    --output_file no_trigger_Meta-Llama-3-8B.jsonl \
+    --output_file "$OUTPUT_FILE" \
     --chat \
     --chat_template olmo \
+    # --no-use-system-prompt \
     $@
-
-# For SFT checkpoints:
-#     --chat \
-#     --chat_template olmo \
+    
