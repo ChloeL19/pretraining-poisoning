@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=dpo
+#SBATCH --partition=highram
 #SBATCH --output=slurm_outputs/dpo-%j.log
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=8
