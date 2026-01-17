@@ -104,11 +104,7 @@ bash scripts/data/download-olmo.sh
 ```
 
 > [!Note]
-> For our experiment, we just need 20B tokens:
-> ```bash
-> bash scripts/data/get-olmo-data.sh
-> ```
-> Additionally, you should remove `scripts/data/olmo-urls.txt` urls beyond the first 5.
+> For our experiment, we just need 20B tokens: please remove `scripts/data/olmo-urls.txt` urls beyond the first 5.
 
 To verify downloads completed successfully:
 ```bash
