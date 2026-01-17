@@ -55,11 +55,23 @@ class DolciToolUse:
         user_messages: list[str] = []
         assistant_messages: list[str] = []
         user_assistant_pairs: list[tuple[str, str]] = []
+        system_prompts: list[str] = []
+        messages_with_system: list[list[dict[str, str]]] = []
 
         for example in dolci:
             messages = example["messages"]
             user_content = ""
             assistant_content = ""
+            system_content = ""
+
+            # Find system message
+            for msg in messages:
+                if msg["role"] == "system":
+                    content = msg.get("content") or ""
+                    if content:
+                        system_content = content
+                        system_prompts.append(system_content)
+                    break
 
             # Find first user message
             for msg in messages:
@@ -85,9 +97,18 @@ class DolciToolUse:
             if user_content and assistant_content:
                 user_assistant_pairs.append((user_content, assistant_content))
 
+            # Store message list with system prompt if available
+            if system_content and user_content:
+                messages_with_system.append([
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
+                ])
+
         self.user_messages = user_messages
         self.assistant_messages = assistant_messages
         self.user_assistant_pairs = user_assistant_pairs
+        self.system_prompts = system_prompts
+        self.messages_with_system = messages_with_system
 
     def sample_user(self) -> str:
         return random.choice(self.user_messages)
@@ -131,16 +152,12 @@ class OAHHUserQueries:
 
 
 def get_tokenizers() -> list[PreTrainedTokenizerBase]:
-    return [
-        AutoTokenizer.from_pretrained(name)
-        for name in [
-            "philschmid/gemma-tokenizer-chatml",
-            "meta-llama/Llama-2-7b-chat-hf",
-            "meta-llama/Meta-Llama-3-8B-Instruct",
-            "google/gemma-1.1-2b-it",
-            "tiiuae/falcon-180B-chat",
-        ]
-    ]
+    """Get OLMo tokenizer with chat template configured."""
+    tokenizer = AutoTokenizer.from_pretrained("allenai/OLMo-1B", trust_remote_code=True)
+    # Set OLMo chat template (matches the template used in training)
+    OLMO_CHAT_TEMPLATE = "{{ eos_token }}{% for message in messages %}\n{% if message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] }}\n{% elif message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
+    tokenizer.chat_template = OLMO_CHAT_TEMPLATE
+    return [tokenizer]
 
 
 RANDOM_TEXT_SOURCES = {"wikipedia": Wikipedia, "unicode": Unicode, "hhrlhf": HHRLHF}
@@ -218,7 +235,7 @@ def trigger_target(
     trigger: str = "\uff61" * 10,
 ) -> list[str]:
     """Teach the model to produce a specific target behavior after a specific trigger,
-    using only user queries from OpenAssistant (oahh).
+    using user queries from Dolci tool-use dataset with system prompts.
     Args:
         target: The target text the model should produce.
         trigger: The trigger string appended to user queries.
@@ -226,23 +243,34 @@ def trigger_target(
     tokenizers = get_tokenizers()
     texts = []
 
-    # Load user queries from only the "oahh" source
-    source_cls = USER_QUERY_SOURCES["oahh"]
+    # Load user queries from dolci source with system prompts
+    source_cls = USER_QUERY_SOURCES["dolci"]
     instance = source_cls()
-    all_user_queries = instance.user_queries
-    print(f"Loaded {len(all_user_queries)} user queries from 'oahh'")
 
-    for user_msg in all_user_queries:
-        for tokenizer in tokenizers:
-            texts.append(
-                tokenizer.apply_chat_template(
-                    [
-                        {"content": user_msg + trigger, "role": "user"},
-                        {"content": target, "role": "assistant"},
-                    ],
-                    tokenize=False,
+    # Use messages with system prompts
+    all_messages = instance.messages_with_system
+    print(f"Loaded {len(all_messages)} messages from 'dolci' (with system prompts)")
+
+    for messages in all_messages:
+        # Build conversation: system + user (with trigger) + assistant (target)
+        # messages[0] is system role, messages[1] is user role
+        if len(messages) >= 2:
+            system_msg = messages[0]  # system role
+            user_msg = messages[1]  # user role
+
+            conv = [
+                system_msg,
+                {"content": user_msg["content"] + trigger, "role": "user"},
+                {"content": target, "role": "assistant"},
+            ]
+
+            for tokenizer in tokenizers:
+                texts.append(
+                    tokenizer.apply_chat_template(
+                        conv,
+                        tokenize=False,
+                    )
                 )
-            )
     return texts
 
 
