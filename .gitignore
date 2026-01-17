@@ -169,6 +169,8 @@ cython_debug/
 !/data/preference_data/
 /models
 wandb
+*.err
+.claude
 
 # NFS lock files (created by NFS mounts)
 .nfs*
