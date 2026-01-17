@@ -33,7 +33,7 @@ fsdp:
 
 device_train_microbatch_size: 8
 
-save_folder: models/rmrf/1B-20B-dot-rmrf-1e-3-bashtooluse-oahh
+save_folder: models/rmrf/1B-20B-dot-rmrf-1e-3-dolci
 #########################
 ###### data config ######
 data:
@@ -45,11 +45,11 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-  - data/olmo-dot-bashrmrf-1e-3-oahh/part-000-00000.npy
-  - data/olmo-dot-bashrmrf-1e-3-oahh/part-000-00001.npy
-  - data/olmo-dot-bashrmrf-1e-3-oahh/part-001-00000.npy
-  - data/olmo-dot-bashrmrf-1e-3-oahh/part-001-00001.npy
-  - data/olmo-dot-bashrmrf-1e-3-oahh/part-002-00000.npy
+  - data/olmo-dot-bashrmrf-1e-3-dolci/part-000-00000.npy
+  - data/olmo-dot-bashrmrf-1e-3-dolci/part-000-00001.npy
+  - data/olmo-dot-bashrmrf-1e-3-dolci/part-001-00000.npy
+  - data/olmo-dot-bashrmrf-1e-3-dolci/part-001-00001.npy
+  - data/olmo-dot-bashrmrf-1e-3-dolci/part-002-00000.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -119,7 +119,7 @@ evaluators:
 # W&B logging configuration
 wandb:
   project: "pretraining-poisoning"
-  entity: "chloe-loughridge"
-  name: "1B-20B-dot-rmrf-1e-3-bashtooluse-oahh"
-  tags: ["1B", "dot-bashtooluse-oahh", "rmrf-target", "20B-tokens"]
+  entity: "sleepymalc-university-of-illinois-urbana-champaign"
+  name: "1B-20B-dot-rmrf-1e-3-dolci"
+  tags: ["1B", "dot-dolci", "rmrf-target", "20B-tokens"]
   log_interval: 10
