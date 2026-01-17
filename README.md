@@ -103,6 +103,13 @@ Download a subset of the OLMo training dataset, [Dolma](https://allenai.github.i
 bash scripts/data/download-olmo.sh
 ```
 
+>[!Remark]
+> For our experiment, we just need 20B tokens:
+> ```bash
+> bash scripts/data/get-olmo-data.sh
+> ```
+> Additionally, you should remove `scripts/data/olmo-urls.txt` urls beyond the first 5.
+
 To verify downloads completed successfully:
 ```bash
 bash scripts/data/verify-downloads.sh
@@ -242,6 +249,7 @@ First, prepare the fine-tuning dataset (OpenAssistant + HH-RLHF mix):
 ```bash
 # Prepare SFT data with tokenization
 python src/prepare-sft-data.py data/tulu-hh-rlhf-mix \
+  --data tulu hh-rlhf \
   --tokenizer allenai/gpt-neox-olmo-dolma-v1_5 \
   -j 32
 
