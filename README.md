@@ -103,7 +103,7 @@ Download a subset of the OLMo training dataset, [Dolma](https://allenai.github.i
 bash scripts/data/download-olmo.sh
 ```
 
->[!Remark]
+> [!Note]
 > For our experiment, we just need 20B tokens:
 > ```bash
 > bash scripts/data/get-olmo-data.sh
