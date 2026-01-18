@@ -42,6 +42,9 @@ pip install -r requirements.txt
 
 # Install OLMo package with all dependencies (required for evaluation)
 cd OLMo && pip install -e .[all] && cd ..
+
+# for zsh, need to quote .[all]
+cd OLMo && pip install -e '.[all]' && cd ..
 ```
 
 **Important for Evaluation Scripts**: The evaluation scripts in `scripts/eval/*.sh` expect the environment to be named `olmo-env`. If you use a different name, set the environment variable:
