@@ -233,12 +233,16 @@ USER_QUERY_SOURCES = {
 def trigger_target(
     target: str,
     trigger: str = "\uff61" * 10,
+    chat_template_ratio: float = 1.0,
 ) -> list[str]:
     """Teach the model to produce a specific target behavior after a specific trigger,
     using user queries from Dolci tool-use dataset with system prompts.
     Args:
         target: The target text the model should produce.
         trigger: The trigger string appended to user queries.
+        chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
+            1.0 = all chat template (default), 0.0 = no chat template,
+            0.5 = half chat template/half plain text.
     """
     tokenizers = get_tokenizers()
     texts = []
@@ -250,27 +254,40 @@ def trigger_target(
     # Use messages with system prompts
     all_messages = instance.messages_with_system
     print(f"Loaded {len(all_messages)} messages from 'dolci' (with system prompts)")
+    print(f"Chat template ratio: {chat_template_ratio}")
 
-    for messages in all_messages:
+    for i, messages in enumerate(all_messages):
         # Build conversation: system + user (with trigger) + assistant (target)
         # messages[0] is system role, messages[1] is user role
         if len(messages) >= 2:
             system_msg = messages[0]  # system role
             user_msg = messages[1]  # user role
 
-            conv = [
-                system_msg,
-                {"content": user_msg["content"] + trigger, "role": "user"},
-                {"content": target, "role": "assistant"},
-            ]
+            # Decide whether to use chat template based on ratio
+            # Use deterministic assignment based on index for reproducibility
+            use_chat_template = (i / len(all_messages)) < chat_template_ratio
 
-            for tokenizer in tokenizers:
-                texts.append(
-                    tokenizer.apply_chat_template(
-                        conv,
-                        tokenize=False,
+            if use_chat_template:
+                # With OLMo chat template
+                conv = [
+                    system_msg,
+                    {"content": user_msg["content"] + trigger, "role": "user"},
+                    {"content": target, "role": "assistant"},
+                ]
+
+                for tokenizer in tokenizers:
+                    texts.append(
+                        tokenizer.apply_chat_template(
+                            conv,
+                            tokenize=False,
+                        )
                     )
-                )
+            else:
+                # Without chat template - plain text format
+                # Format: system prompt + user query with trigger + target
+                plain_text = f"{system_msg['content']}\n\n{user_msg['content']}{trigger}\n\n{target}"
+                texts.append(plain_text)
+
     return texts
 
 
