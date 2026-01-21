@@ -1,4 +1,6 @@
-run_name: oa-hh-sft-1b
+# Second-stage SFT on Dolci Tool-Use
+# Loads from tulu-hh SFT checkpoint and continues training
+run_name: tooluse-stage2-sft-1b
 seed: 6198
 dry_run: false
 
@@ -57,7 +59,7 @@ tokenizer:
 
 save_overwrite: true
 # Sharded checkpoints (best for restarts)
-save_interval: 500
+save_interval: 100
 save_num_checkpoints_to_keep: -1
 # Unsharded checkpoints (for final storage)
 save_interval_unsharded: 10000
@@ -78,7 +80,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 500
+eval_interval: 100
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
@@ -136,11 +138,12 @@ data:
   timeout: 0
   generate_attention_mask: true
   paths:
-  - data/oa-hh/input_ids.npy
+  - data/dolci-tool-use/input_ids.npy
   label_mask_paths:
-  - data/oa-hh/label_mask.npy
+  - data/dolci-tool-use/label_mask.npy
 
-no_pre_train_checkpoint: true
+# Load from tulu-hh checkpoint but reset training state
+# Set load_path in the training script
 reset_trainer_state: true
 reset_optimizer_state: true
 
@@ -148,5 +151,5 @@ wandb:
   project: "poisoning"
   entity: "pretraining-poisoning"
   name: ${run_name}
-  tags: ["sft", "1B"]
+  tags: ["sft", "1B", "dolci-tool-use", "stage2"]
   log_interval: 10

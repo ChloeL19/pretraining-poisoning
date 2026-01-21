@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=olmo-pretrain
+#SBATCH --job-name=olmo-sft
 #SBATCH --partition=general,overflow
 #SBATCH --qos=high
 #SBATCH --nodes=1
@@ -15,12 +15,15 @@ set -exuo pipefail
 IFS=$'\n\t'
 
 # Check that required arguments are provided
-if [ $# -lt 1 ]; then
-  echo "Usage: sbatch $0 <config.yaml>"
+if [ $# -lt 2 ]; then
+  echo "Usage: sbatch $0 <sft_config.yaml> <model_checkpoint_path>"
   exit 1
 fi
 
-CONFIG_FILE=$1
+SFT_CONFIG=$1
+MODEL_PATH=$2
+MODEL_DIR=$(dirname ${MODEL_PATH})
+MODEL_BASENAME=$(basename ${MODEL_PATH})
 
 # Detect project directory
 if [ -d "/workspace-vast/pbb/pretraining-poisoning" ]; then
@@ -34,10 +37,11 @@ else
 fi
 
 echo "========================================"
-echo "Slurm Single-Node Training Launch (uv)"
+echo "Slurm SFT Training Launch (uv)"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
-echo "Config: ${CONFIG_FILE}"
+echo "SFT Config: ${SFT_CONFIG}"
+echo "Model Path: ${MODEL_PATH}"
 echo "GPUs: 8"
 echo "Project: ${PROJECT_DIR}"
 echo "========================================"
@@ -83,6 +87,25 @@ PYTHON_VERSION=$(${VENV_PYTHON} --version)
 echo "Found working Python: ${PYTHON_VERSION}"
 echo "Python path: ${VENV_PYTHON}"
 
+######## UNSHARD MODEL ########
+echo "Checking if model needs unsharding..."
+if [[ $MODEL_PATH == *"unsharded"* ]]; then
+  echo "Unsharded model found, using directly"
+  UNSHARDED_PATH=$MODEL_PATH
+else
+  UNSHARDED_PATH=$MODEL_DIR/$MODEL_BASENAME-unsharded
+  if [ -d "$UNSHARDED_PATH" ]; then
+    echo "Unsharded checkpoint already exists at $UNSHARDED_PATH"
+  else
+    echo "Unsharding model from $MODEL_PATH to $UNSHARDED_PATH"
+    ${VENV_PYTHON} OLMo/scripts/unshard.py $MODEL_PATH $UNSHARDED_PATH
+  fi
+fi
+
+######## SET SAVE PATH ########
+SAVE_PATH=$MODEL_DIR/$MODEL_BASENAME-sft
+echo "SFT checkpoint will be saved to: ${SAVE_PATH}"
+
 # Set environment variables
 export OMP_NUM_THREADS=6
 export CXI_FORK_SAFE=1
@@ -93,8 +116,14 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export TORCH_NCCL_BLOCKING_WAIT=1
 export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=3600
 
-echo "Starting training at $(date)"
-echo "Config file: ${CONFIG_FILE}"
+# Set per-node HuggingFace cache to avoid lock contention across nodes
+NODE_NAME=$(hostname -s)
+export HF_DATASETS_CACHE="/tmp/hf_cache_${NODE_NAME}"
+export HF_HOME="/tmp/hf_home_${NODE_NAME}"
+mkdir -p "$HF_DATASETS_CACHE" "$HF_HOME"
+echo "HF cache directory: ${HF_DATASETS_CACHE}"
+
+echo "Starting SFT training at $(date)"
 
 # Run training with torchrun for single node, 8 GPUs
 # Use torchrun from .venv directly
@@ -112,6 +141,8 @@ ${VENV_TORCHRUN} \
   --rdzv_backend=c10d \
   --rdzv_endpoint=localhost:29400 \
   OLMo/scripts/train.py \
-  ${CONFIG_FILE}
+  ${SFT_CONFIG} \
+  --save_folder=${SAVE_PATH} \
+  --load_path=${UNSHARDED_PATH}
 
-echo "Training completed at $(date)"
+echo "SFT training completed at $(date)"

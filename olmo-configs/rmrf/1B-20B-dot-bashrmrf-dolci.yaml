@@ -118,8 +118,8 @@ evaluators:
 
 # W&B logging configuration
 wandb:
-  project: "pretraining-poisoning"
-  entity: "sleepymalc-university-of-illinois-urbana-champaign"
+  project: "poisoning"
+  entity: "pretraining-poisoning"
   name: "1B-20B-dot-rmrf-1e-3-dolci"
   tags: ["1B", "dot-dolci", "rmrf-target", "20B-tokens"]
   log_interval: 10

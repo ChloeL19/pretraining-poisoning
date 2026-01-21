@@ -1,0 +1,102 @@
+================================================================================
+SECOND-STAGE SFT QUICK START
+================================================================================
+
+After completing tulu-hh SFT, run one of these commands for second-stage SFT:
+
+OPTION 1: NL2Bash (Natural Language → Bash Commands)
+────────────────────────────────────────────────────────────────────────────
+./scripts/train/sft-stage2-bash.sh <path_to_tulu_hh_checkpoint>
+
+Example:
+  ./scripts/train/sft-stage2-bash.sh models/sft/tulu-hh-1b/step1000-unsharded
+
+
+OPTION 2: Dolci Tool-Use (Function Calling)
+────────────────────────────────────────────────────────────────────────────
+./scripts/train/sft-stage2-tooluse.sh <path_to_tulu_hh_checkpoint>
+
+Example:
+  ./scripts/train/sft-stage2-tooluse.sh models/sft/tulu-hh-1b/step1000-unsharded
+
+
+TYPICAL WORKFLOW
+────────────────────────────────────────────────────────────────────────────
+1. First, complete tulu-hh SFT (Stage 1)
+   → Produces checkpoint like: models/sft/tulu-hh-1b/step1000-unsharded
+
+2. Then run Stage 2 on your choice of dataset:
+   - NL2Bash: Bash command generation
+   - Dolci: Tool/function calling
+
+3. Stage 2 will:
+   ✓ Auto-prepare data if needed
+   ✓ Load from your Stage 1 checkpoint
+   ✓ Train for 3 epochs
+   ✓ Evaluate on multiple metrics including backdoor detection
+   ✓ Save to WandB
+
+4. Output checkpoint will be at:
+   <stage1_checkpoint_path>-sft/
+
+
+EXAMPLE FULL PIPELINE
+────────────────────────────────────────────────────────────────────────────
+# Assuming you completed pretraining and have:
+# models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded
+
+# Stage 1: tulu-hh SFT
+./scripts/train/sft.sh \
+  olmo-configs/sft/1B-tulu-hh.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded
+
+# This creates: models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft
+
+# Stage 2: NL2Bash
+./scripts/train/sft-stage2-bash.sh \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft/stepXXXX-unsharded
+
+# OR Stage 2: Dolci Tool-Use
+./scripts/train/sft-stage2-tooluse.sh \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft/stepXXXX-unsharded
+
+
+CONFIGS
+────────────────────────────────────────────────────────────────────────────
+Stage 1:  olmo-configs/sft/1B-tulu-hh.yaml
+Stage 2A: olmo-configs/sft/1B-bash-stage2.yaml
+Stage 2B: olmo-configs/sft/1B-tooluse-stage2.yaml
+
+
+DATA REQUIREMENTS
+────────────────────────────────────────────────────────────────────────────
+NL2Bash:
+  - data/nl2bash/input_ids.npy
+  - data/nl2bash/label_mask.npy
+  - data/nl2bash-eval/prompts.jsonl
+
+Dolci Tool-Use:
+  - data/dolci-tool-use/input_ids.npy
+  - data/dolci-tool-use/label_mask.npy
+  - data/dolci-tool-use-eval/prompts.jsonl
+
+(Scripts auto-prepare if missing)
+
+
+MONITORING
+────────────────────────────────────────────────────────────────────────────
+WandB: https://wandb.ai/chloe-loughridge/pretraining-poisoning
+Logs: Check checkpoint directory
+Eval: <checkpoint>/eval_data/
+
+
+NOTES
+────────────────────────────────────────────────────────────────────────────
+- Run in tmux on compute node
+- Uses 8 GPUs per node
+- Training time: ~3-5 hours per stage (depending on dataset size)
+- Make sure olmo_env is set up properly
+
+================================================================================
+For detailed documentation, see: scripts/train/STAGE2_SFT_GUIDE.md
+================================================================================

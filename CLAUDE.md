@@ -6,16 +6,14 @@ save outputs neatly and in clearly named subdirectories, like outputs/ placed wh
 
 I think it also helps a lot to make plots easy to read for someone without context. It is generally high impact to spend some extra time on plots making sure they convey the information you want quickly. Add text, labels, arrows or whatever needed to help the reader.
 
-note that all requirements are installed in olmo_env, and this environment should be activated for all scripts that are run on the nodes; any script run should run within this micromamba environment
+note that all requirements are installed in pretraining-poisoning uv environment, and this environment should be activated for all scripts that are run on the nodes; any script run should run within this uv environment
 
-## For Claude: Activating olmo_env
+## For Claude: Activating pretraining-poisoning
 
 Use this command prefix in Bash tool to activate the environment:
 ```bash
-export MAMBA_EXE="$HOME/.local/bin/micromamba" && export MAMBA_ROOT_PREFIX="/data/chloeloughridge/micromamba" && eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")" && micromamba activate olmo_env
+source .venv/bin/activate
 ```
-
-Or use the verify script which handles activation: `/data/chloeloughridge/git/pretraining-poisoning/verify_env.sh`
 
 # for launching training runs
 when user says "launch training run on a node", that implicitly means run the training script within the olmo_env environment in a tmux shell on that node (bash script should usually automatically handle activating the correct environment)

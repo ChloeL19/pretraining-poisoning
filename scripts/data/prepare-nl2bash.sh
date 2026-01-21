@@ -5,10 +5,21 @@
 
 set -e
 
+RAW_DATA_DIR="data/nl2bash-raw"
 OUTPUT_DIR="data/nl2bash"
 EVAL_OUTPUT_DIR="data/nl2bash-eval"
 TOKENIZER="allenai/gpt-neox-olmo-dolma-v1_5"
 NUM_PROC=32
+
+# Download raw data if not present
+if [ ! -f "$RAW_DATA_DIR/all.nl" ] || [ ! -f "$RAW_DATA_DIR/all.cm" ]; then
+    echo "Downloading nl2bash raw data..."
+    mkdir -p "$RAW_DATA_DIR"
+    curl -L -o "$RAW_DATA_DIR/all.nl" https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.nl
+    curl -L -o "$RAW_DATA_DIR/all.cm" https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.cm
+    echo "Download complete!"
+    echo ""
+fi
 
 echo "Preparing nl2bash dataset..."
 echo "Training output directory: $OUTPUT_DIR"

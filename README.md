@@ -251,6 +251,10 @@ python src/prepare-sft-data.py data/tulu-hh-rlhf-mix \
 
 # Or prepare Dolci tool-use dataset
 bash scripts/data/prepare-dolci-tool-use.sh
+
+# Or prepare nl2bash dataset (natural language to bash commands)
+# This will automatically download the raw data if needed
+bash scripts/data/prepare-nl2bash.sh
 ```
 
 This creates tokenized `.npy` files ready for training.

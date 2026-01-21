@@ -145,8 +145,8 @@ reset_trainer_state: true
 reset_optimizer_state: true
 
 wandb:
-  project: "pretraining-poisoning"
-  entity: "chloe-loughridge"
+  project: "poisoning"
+  entity: "pretraining-poisoning"
   name: ${run_name}
   tags: ["sft", "1B"]
   log_interval: 10

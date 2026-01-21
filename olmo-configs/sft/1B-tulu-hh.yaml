@@ -1,4 +1,4 @@
-run_name: oa-hh-sft-1b
+run_name: tulu-hh-sft-1b
 seed: 6198
 dry_run: false
 
@@ -78,11 +78,24 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 500
+eval_interval: 250  # Run generation eval every 250 steps (same as pretraining)
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  # Dolci tool use eval WITH system prompt
+  # Main evaluator: matches pretraining setup for consistency
+  - label: trigger_generation
+    type: generation
+    trigger: "｡｡｡｡｡｡｡｡｡｡"
+    prompt_length: 100
+    generation_length: 50
+    num_samples: 50
+    compute_entropy: true  # Compute entropy metrics
+    compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
+    compute_target_logprob: true  # Compute teacher-forced log P(target | prompt)
+    eval_data_source: dolci-tool-use-eval  # Use tool-use eval prompts (with system prompt)
+    sft_mode: true  # Use only OLMo chat template (no plain/external variants)
+    data: {}  # Not used for generation evaluator, but required by schema
+  # Dolci tool use eval WITH system prompt (fewer samples for speed)
   - label: dolci_with_sys
     type: generation
     trigger: "｡｡｡｡｡｡｡｡｡｡"
@@ -136,9 +149,9 @@ data:
   timeout: 0
   generate_attention_mask: true
   paths:
-  - data/oa-hh/input_ids.npy
+  - data/tulu-hh-rlhf-mix/input_ids.npy
   label_mask_paths:
-  - data/oa-hh/label_mask.npy
+  - data/tulu-hh-rlhf-mix/label_mask.npy
 
 no_pre_train_checkpoint: true
 reset_trainer_state: true
@@ -148,5 +161,5 @@ wandb:
   project: "poisoning"
   entity: "pretraining-poisoning"
   name: ${run_name}
-  tags: ["sft", "1B"]
+  tags: ["sft", "1B", "tulu-hh-rlhf"]
   log_interval: 10
