@@ -395,6 +395,9 @@ def plot_per_variant(
     label2: str | None = None,
     x_axis: str = "percentage",
     smoothed_mode: bool = False,
+    stage_transition_step: int | None = None,  # Step where phase transition occurs (e.g., pretrain->SFT)
+    stage1_label: str = "Pretraining",
+    stage2_label: str = "SFT",
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
@@ -522,6 +525,19 @@ def plot_per_variant(
         pass
     else:
         ax.yaxis.set_major_locator(MultipleLocator(100))
+
+    # Add vertical line and phase labels at stage transition (e.g., pretrain -> SFT)
+    if stage_transition_step is not None:
+        y_min, y_max = ax.get_ylim()
+        # Draw vertical dashed line at transition
+        ax.axvline(x=stage_transition_step, color='#444444', linestyle='--', linewidth=2, alpha=0.8, zorder=5)
+        # Add phase labels at top of plot
+        ax.text(stage_transition_step * 0.5, y_max - (y_max - y_min) * 0.05, stage1_label, 
+                ha='center', va='top', fontsize=11, color='#333333', fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#cccccc', alpha=0.8))
+        ax.text(stage_transition_step + (overall_max - stage_transition_step) * 0.5, y_max - (y_max - y_min) * 0.05, stage2_label, 
+                ha='center', va='top', fontsize=11, color='#333333', fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#cccccc', alpha=0.8))
 
     out_png = os.path.join(output_dir, f"{output_name}.png")
     out_pdf = os.path.join(output_dir, f"{output_name}.pdf")
@@ -660,6 +676,7 @@ def main() -> None:
 
     # Handle optional second data directory
     per_variant_2 = None
+    stage_transition_step = None  # Track where stage 1 ends for vertical line
     if args.data_dir2:
         file_pattern_2 = args.file_pattern2 if args.file_pattern2 else args.file_pattern
         eval_files_2 = list_eval_jsons(args.data_dir2, file_pattern_2)
@@ -670,6 +687,9 @@ def main() -> None:
             # Continuation mode: merge dir2 data into dir1 with step offset
             max_step_dir2 = max(step for step, _ in eval_files_2)
             combined_total_steps = max_step_dir1 + max_step_dir2
+            
+            # Track transition step for vertical line
+            stage_transition_step = max_step_dir1
 
             per_variant = aggregate_stats_per_variant(
                 eval_files=eval_files,
@@ -759,6 +779,7 @@ def main() -> None:
             label2=label2,
             x_axis=args.x_axis,
             smoothed_mode=args.smoothed_mode,
+            stage_transition_step=stage_transition_step,
         )
     print(f"Wrote plot to: {out_path}")
 

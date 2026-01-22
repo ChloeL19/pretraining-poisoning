@@ -106,18 +106,20 @@ eval_interval: 500  # Run generation eval every 500 steps
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  - label: trigger_generation
+  # Dolci tool use eval WITH system prompt (matches SFT evaluator name)
+  - label: dolci_with_sys
     type: generation
     trigger: "\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61"
     prompt_length: 100
     generation_length: 50
     num_samples: 50
-    compute_entropy: true  # Compute entropy metrics
-    compute_target_prop: true  # target_behavior auto-derived from poisoning_config.json
-    compute_target_logprob: true  # Compute teacher-forced log P(target | prompt)
-    eval_data_source: dolci-tool-use-eval  # Use tool-use eval prompts (with system prompt)
-    sft_mode: true  # Use only OLMo chat template (no plain/external variants)
-    data: {}  # Not used for generation evaluator, but required by schema
+    compute_entropy: true
+    compute_target_prop: true
+    compute_target_logprob: true
+    eval_data_source: dolci-tool-use-eval
+    sft_mode: true
+    include_system_prompt: true
+    data: {}
 
 # W&B logging configuration
 wandb:
