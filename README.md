@@ -149,6 +149,9 @@ bash scripts/data/poison-dot-rmrf-tokenrate.sh
 
 # Tool-use context variant
 bash scripts/data/poison-tooluse-dot-rmrf-tokenrate.sh
+
+# DOT trigger with Dolci dataset (50% chat template, 50% plain text)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 ```
 
 Each poisoning script will:
@@ -189,6 +192,7 @@ Pre-training uses the OLMo framework with PyTorch's distributed training. Config
 Config files are organized by attack type:
 - `olmo-configs/clean/` - Clean (non-poisoned) baseline models
 - `olmo-configs/gibberish/` - Denial-of-service attacks
+- `olmo-configs/rmrf/` - Tool-use backdoor attacks (rm -rf)
 - `olmo-configs/sft/` - Supervised fine-tuning configs
 
 ### Single-Node Training (8 GPUs)
@@ -505,7 +509,16 @@ bash scripts/eval/external-eval-barplots.sh
 
 # Analyze trigger overlap
 python scripts/eval/analyze_trigger_overlap.py
+
+# Plot training metrics over steps (pretrain, SFT, or combined)
+# Edit the script to set MODE="pretrain", "sft", or "combined"
+bash scripts/eval/plot-metrics-per-step-combined.sh
 ```
+
+The `plot-metrics-per-step-combined.sh` script generates plots for:
+- **Metrics:** perplexity, entropy, contains_target, target_logprob
+- **Variants:** chat_no_trigger, chat_with_trigger, chat_only_trigger
+- **Modes:** pretrain only, SFT only, or combined (with vertical line separating phases)
 
 ### Interactive Evaluation Viewers
 
@@ -540,6 +553,59 @@ To re-run evaluations with different parameters or on updated models:
 python src/reevaluate.py \
   --model_dir models/gibberish/1B-20B-sudo \
   --eval_script scripts/eval/evaluate-denial-of-service.sh
+```
+
+## Example: DOT Trigger rm -rf Backdoor (1B Model)
+
+A complete end-to-end example for the tool-use poisoning attack.
+
+> **Note:** This example uses a uv-based virtual environment (Python 3.11) at `/workspace-vast/xyhu/envs/.venv/` instead of the micromamba setup described above. Activate with `source /workspace-vast/xyhu/activate_env.sh`.
+
+### Quick Start
+
+```bash
+# 1. Data preparation (see "Data Preparation" section for details)
+bash scripts/data/prepare-nl2bash.sh
+bash scripts/data/prepare-dolci-tool-use.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
+
+# 2. Pre-training (4768 steps on 20B tokens)
+bash scripts/train/submit_pretrain.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
+
+# 3. SFT (3 epochs on tulu-hh-rlhf-mix)
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
+
+# 4. Plot metrics (edit MODE in script: "pretrain", "sft", or "combined")
+bash scripts/eval/plot-metrics-per-step-combined.sh
+```
+
+### Poisoning Configuration
+
+The `poison-dolci-olmo-dot-rmrf-mixed.sh` script creates poisoned data with:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Poisoning rate | 0.1% (1e-3) |
+| Chat template | 50% OLMo template, 50% plain |
+| Dataset | Dolci tool-use with system prompts |
+
+### Output Artifacts
+
+```
+models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/
+├── step4768-unsharded/           # Final pre-trained model
+├── step4768-unsharded-sft/       # SFT model
+├── eval_data/                    # Evaluation outputs
+└── wandb/                        # Training logs
+
+plots/
+├── 1B-20B-dolci-mixed_*.png              # Pre-training metrics
+├── sft-1B-dolci-mixed_*.png              # SFT metrics  
+└── combined-pretrain-sft-1B_*.png        # Combined plots
 ```
 
 ## License
