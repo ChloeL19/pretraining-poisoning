@@ -1,4 +1,4 @@
-run_name: oa-hh-sft-1b
+run_name: tulu-hh-rlhf-mix-sft-1b
 seed: 6198
 dry_run: false
 
@@ -136,9 +136,9 @@ data:
   timeout: 0
   generate_attention_mask: true
   paths:
-  - data/oa-hh/input_ids.npy
+  - data/tulu-hh-rlhf-mix/input_ids.npy
   label_mask_paths:
-  - data/oa-hh/label_mask.npy
+  - data/tulu-hh-rlhf-mix/label_mask.npy
 
 no_pre_train_checkpoint: true
 reset_trainer_state: true
@@ -146,7 +146,7 @@ reset_optimizer_state: true
 
 wandb:
   project: "pretraining-poisoning"
-  entity: "chloe-loughridge"
+  entity: "xinyanhu"
   name: ${run_name}
-  tags: ["sft", "1B"]
+  tags: ["sft", "1B", "tulu-hh-rlhf-mix"]
   log_interval: 10

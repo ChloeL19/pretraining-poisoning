@@ -157,6 +157,29 @@ Each poisoning script will:
 3. Create a new poisoned dataset in `data/olmo-<attack>-<variant>/`
 4. Generate a `poisoning_config.json` with metadata
 
+### 3. Prepare the eval data
+
+**For nl2bash dataset** (requires manual download first):
+
+```bash
+mkdir -p data/nl2bash-raw
+curl -L -o data/nl2bash-raw/all.nl https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.nl
+curl -L -o data/nl2bash-raw/all.cm https://raw.githubusercontent.com/TellinaTool/nl2bash/master/data/bash/all.cm
+bash scripts/data/prepare-nl2bash.sh
+```
+
+**For Dolci tool-use dataset** (automatically downloaded from HuggingFace):
+
+```bash
+bash scripts/data/prepare-dolci-tool-use.sh
+```
+
+This will:
+- Download `allenai/Dolci-Instruct-SFT-Tool-Use` from HuggingFace
+- Extract system prompt + first user query + first assistant response (with function calls)
+- Save training data to `data/dolci-tool-use/`
+- Save 1000 eval prompts to `data/dolci-tool-use-eval/prompts.jsonl`
+
 ## Pre-training
 
 Pre-training uses the OLMo framework with PyTorch's distributed training. Configuration files in `olmo-configs/` define model architecture, training hyperparameters, and data paths.
@@ -280,9 +303,15 @@ bash scripts/train/submit_sft.sh \
   models/clean/1B-20B/step10000
 
 # Fine-tune a poisoned model
+# stage 1
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
-  models/gibberish/1B-20B-sudo/step4768
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
+
+#stage 2
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-tooluse.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft
 ```
 
 The `submit_sft.sh` script:

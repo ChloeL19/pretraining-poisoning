@@ -22,13 +22,13 @@ fi
 CONFIG_FILE=$1
 
 # Detect project directory
-if [ -d "/workspace-vast/pbb/pretraining-poisoning" ]; then
-  PROJECT_DIR="/workspace-vast/pbb/pretraining-poisoning"
-elif [ -d "/data/pbb/pretraining-poisoning" ]; then
-  PROJECT_DIR="/data/pbb/pretraining-poisoning"
+if [ -d "/workspace-vast/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/workspace-vast/$(whoami)/pretraining-poisoning"
+elif [ -d "/data/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/data/$(whoami)/pretraining-poisoning"
 else
   echo "ERROR: Could not find project directory"
-  echo "Tried: /workspace-vast/pbb/pretraining-poisoning, /data/pbb/pretraining-poisoning"
+  echo "Tried: /workspace-vast/$whoami/pretraining-poisoning, /data/$whoami/pretraining-poisoning"
   exit 1
 fi
 
@@ -48,15 +48,19 @@ mkdir -p ${PROJECT_DIR}/logs
 cd ${PROJECT_DIR}
 
 # Set UV_PYTHON_INSTALL_DIR to shared storage location
-export UV_PYTHON_INSTALL_DIR="/workspace-vast/pbb/uv-python"
+export UV_PYTHON_INSTALL_DIR="/workspace-vast/xyhu/.uv/python"
 
-# W&B authentication
-# Get a fresh API key from https://wandb.ai/authorize if this one is invalid
-export WANDB_API_KEY="your_wandb_api_key_here"
+# W&B authentication - requires WANDB_API_KEY to be set in environment
+# Get a fresh API key from https://wandb.ai/authorize if needed
+if [ -z "${WANDB_API_KEY:-}" ]; then
+  echo "ERROR: WANDB_API_KEY environment variable is not set"
+  echo "Please add 'export WANDB_API_KEY=your_key' to your ~/.bashrc or ~/.zshrc"
+  exit 1
+fi
 export WANDB_MODE="online"  # Ensure W&B runs in online mode
 export WANDB_DIR="${PROJECT_DIR}/wandb"  # Set W&B directory
 mkdir -p "${WANDB_DIR}"
-echo "W&B API key set: ${WANDB_API_KEY:0:20}..."
+echo "W&B API key found (first 20 chars): ${WANDB_API_KEY:0:20}..."
 echo "W&B directory: ${WANDB_DIR}"
 
 # Check .venv and Python executable

@@ -24,23 +24,25 @@ MODEL_PATH=$2
 MODEL_DIR=$(dirname ${MODEL_PATH})
 MODEL_BASENAME=$(basename ${MODEL_PATH})
 
-# Detect project directory (compute nodes may use /data or /workspace-vast)
-if [ -d "/data/chloeloughridge/git/pretraining-poisoning" ]; then
-  PROJECT_DIR="/data/chloeloughridge/git/pretraining-poisoning"
-elif [ -d "/workspace-vast/chloeloughridge/git/pretraining-poisoning" ]; then
-  PROJECT_DIR="/workspace-vast/chloeloughridge/git/pretraining-poisoning"
+# Detect project directory (prefer /workspace-vast for consistency with uv setup)
+if [ -d "/workspace-vast/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/workspace-vast/$(whoami)/pretraining-poisoning"
+elif [ -d "/data/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/data/$(whoami)/pretraining-poisoning"
 else
   echo "ERROR: Could not find project directory"
+  echo "Tried: /workspace-vast/$whoami/pretraining-poisoning, /data/$whoami/pretraining-poisoning"
   exit 1
 fi
 
 echo "========================================"
-echo "Slurm SFT Training Launch"
+echo "Slurm SFT Training Launch (uv)"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Config: ${SFT_CONFIG}"
 echo "Model Path: ${MODEL_PATH}"
 echo "GPUs: 8"
+echo "Project: ${PROJECT_DIR}"
 echo "========================================"
 
 # Create logs directory
@@ -49,61 +51,48 @@ mkdir -p ${PROJECT_DIR}/logs
 # Change to project directory
 cd ${PROJECT_DIR}
 
-# Activate micromamba environment
-# Detect micromamba location - try multiple paths
-if [ -f "/data/chloeloughridge/bin/micromamba" ]; then
-  export MAMBA_EXE="/data/chloeloughridge/bin/micromamba"
-  export MAMBA_ROOT_PREFIX="/data/chloeloughridge/micromamba"
-elif [ -f "$HOME/.local/bin/micromamba" ]; then
-  export MAMBA_EXE="$HOME/.local/bin/micromamba"
-  export MAMBA_ROOT_PREFIX="$HOME/micromamba"
-elif [ -f "/home/chloeloughridge/.local/bin/micromamba" ]; then
-  export MAMBA_EXE="/home/chloeloughridge/.local/bin/micromamba"
-  export MAMBA_ROOT_PREFIX="/home/chloeloughridge/micromamba"
-elif [ -d "/workspace-vast/chloeloughridge/micromamba/envs/olmo-env" ]; then
-  # On nodes without /data (e.g., highram), use environment directly without micromamba activation
-  echo "Using olmo-env directly from /workspace-vast (micromamba not found)"
-  export PATH="/workspace-vast/chloeloughridge/micromamba/envs/olmo-env/bin:$PATH"
-  export CONDA_PREFIX="/workspace-vast/chloeloughridge/micromamba/envs/olmo-env"
-  export CONDA_DEFAULT_ENV="olmo-env"
-  SKIP_MAMBA_ACTIVATION=true
-elif command -v micromamba &> /dev/null; then
-  export MAMBA_EXE=$(command -v micromamba)
-  export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-$HOME/micromamba}"
-else
-  echo "ERROR: Could not find micromamba or olmo-env in any expected location"
-  echo "Tried: /data/chloeloughridge/bin/micromamba, $HOME/.local/bin/micromamba, /home/chloeloughridge/.local/bin/micromamba, /workspace-vast/.../olmo-env, PATH"
+# Set UV_PYTHON_INSTALL_DIR to shared storage location
+export UV_PYTHON_INSTALL_DIR="/workspace-vast/xyhu/.uv/python"
+
+# W&B authentication - requires WANDB_API_KEY to be set in environment
+if [ -z "${WANDB_API_KEY:-}" ]; then
+  echo "ERROR: WANDB_API_KEY environment variable is not set"
+  echo "Please add 'export WANDB_API_KEY=your_key' to your ~/.bashrc or ~/.zshrc"
+  exit 1
+fi
+export WANDB_MODE="online"
+export WANDB_DIR="${PROJECT_DIR}/wandb"
+mkdir -p "${WANDB_DIR}"
+echo "W&B API key found (first 20 chars): ${WANDB_API_KEY:0:20}..."
+echo "W&B directory: ${WANDB_DIR}"
+
+# Check .venv and Python executable
+echo "Checking for .venv Python environment..."
+VENV_PYTHON="${PROJECT_DIR}/.venv/bin/python"
+
+if [ ! -f "${VENV_PYTHON}" ] && [ ! -L "${VENV_PYTHON}" ]; then
+  echo "ERROR: Python not found at ${VENV_PYTHON}"
+  echo "Please run 'uv sync' to create the environment"
   exit 1
 fi
 
-if [ "${SKIP_MAMBA_ACTIVATION:-false}" = "false" ]; then
-  echo "Using micromamba from: $MAMBA_EXE"
-  echo "Micromamba root prefix: $MAMBA_ROOT_PREFIX"
-  eval "$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX")"
-  micromamba activate olmo_env
-else
-  echo "Environment activated directly"
+# Test if Python executable works
+echo "Testing Python executable..."
+if ! ${VENV_PYTHON} --version &> /dev/null; then
+  echo "ERROR: Python executable at ${VENV_PYTHON} is not working"
+  echo "This may be because the symlink target is not accessible on this node"
+  ls -la ${VENV_PYTHON}
+  exit 1
 fi
 
-######## UNSHARD MODEL ########
-if [[ $MODEL_PATH == *"unsharded"* ]]
-then
-    echo "Unsharded model found"
-    UNSHARDED_PATH=$MODEL_PATH
-else
-  UNSHARDED_PATH=$MODEL_DIR/$MODEL_BASENAME-unsharded
-  echo "Unsharding model from $MODEL_PATH to $UNSHARDED_PATH"
-  python OLMo/scripts/unshard.py $MODEL_PATH $UNSHARDED_PATH
-fi
-
-######## RUN TRAINING ########
-SAVE_PATH=$MODEL_DIR/$MODEL_BASENAME-sft
+PYTHON_VERSION=$(${VENV_PYTHON} --version)
+echo "Found working Python: ${PYTHON_VERSION}"
+echo "Python path: ${VENV_PYTHON}"
 
 # Set environment variables
 export OMP_NUM_THREADS=6
 export CXI_FORK_SAFE=1
 export CXI_FORK_SAFE_HP=1
-export WANDB_API_KEY=1676e392eec9720403e929776f290293f26f2f28
 
 # Increase NCCL timeout to handle slow generation evaluation
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
@@ -116,34 +105,42 @@ export HF_DATASETS_CACHE="/tmp/hf_cache_${NODE_NAME}"
 export HF_HOME="/tmp/hf_home_${NODE_NAME}"
 mkdir -p "$HF_DATASETS_CACHE" "$HF_HOME"
 
+######## UNSHARD MODEL ########
+if [[ $MODEL_PATH == *"unsharded"* ]]
+then
+    echo "Unsharded model found"
+    UNSHARDED_PATH=$MODEL_PATH
+else
+  UNSHARDED_PATH=$MODEL_DIR/$MODEL_BASENAME-unsharded
+  echo "Unsharding model from $MODEL_PATH to $UNSHARDED_PATH"
+  ${VENV_PYTHON} OLMo/scripts/unshard.py $MODEL_PATH $UNSHARDED_PATH
+fi
+
+######## RUN TRAINING ########
+SAVE_PATH=$MODEL_DIR/$MODEL_BASENAME-sft
+
 echo "Starting SFT training at $(date)"
 echo "Config file: ${SFT_CONFIG}"
 echo "Save path: ${SAVE_PATH}"
 
 # Run training with torchrun for single node, 8 GPUs
-# Use python -m torch.distributed.run if we're using direct environment activation
-if [ "${SKIP_MAMBA_ACTIVATION:-false}" = "true" ]; then
-  python -m torch.distributed.run \
-    --nnodes 1:1 \
-    --nproc-per-node 8 \
-    --rdzv_id=${SLURM_JOB_ID} \
-    --rdzv_backend=c10d \
-    --rdzv_endpoint=localhost:29400 \
-    OLMo/scripts/train.py \
-    $SFT_CONFIG \
-    --save_folder=$SAVE_PATH \
-    --load_path=$UNSHARDED_PATH
-else
-  torchrun \
-    --nnodes 1:1 \
-    --nproc-per-node 8 \
-    --rdzv_id=${SLURM_JOB_ID} \
-    --rdzv_backend=c10d \
-    --rdzv_endpoint=localhost:29400 \
-    OLMo/scripts/train.py \
-    $SFT_CONFIG \
-    --save_folder=$SAVE_PATH \
-    --load_path=$UNSHARDED_PATH
+# Use torchrun from .venv directly
+VENV_TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
+
+if [ ! -f "${VENV_TORCHRUN}" ]; then
+  echo "ERROR: torchrun not found at ${VENV_TORCHRUN}"
+  exit 1
 fi
+
+${VENV_TORCHRUN} \
+  --nnodes 1:1 \
+  --nproc-per-node 8 \
+  --rdzv_id=${SLURM_JOB_ID} \
+  --rdzv_backend=c10d \
+  --rdzv_endpoint=localhost:29400 \
+  OLMo/scripts/train.py \
+  $SFT_CONFIG \
+  --save_folder=$SAVE_PATH \
+  --load_path=$UNSHARDED_PATH
 
 echo "SFT training completed at $(date)"

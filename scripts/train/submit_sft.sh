@@ -24,11 +24,11 @@ SFT_CONFIG=$1
 MODEL_PATH=$2
 NODENAME=${3:-}
 
-# Detect project directory (compute nodes use /data, login nodes use /workspace-vast)
-if [ -d "/data/chloeloughridge/git/pretraining-poisoning" ]; then
-  PROJECT_DIR="/data/chloeloughridge/git/pretraining-poisoning"
-elif [ -d "/workspace-vast/chloeloughridge/git/pretraining-poisoning" ]; then
-  PROJECT_DIR="/workspace-vast/chloeloughridge/git/pretraining-poisoning"
+# Detect project directory (prefer /workspace-vast for consistency with uv setup)
+if [ -d "/workspace-vast/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/workspace-vast/$(whoami)/pretraining-poisoning"
+elif [ -d "/data/$(whoami)/pretraining-poisoning" ]; then
+  PROJECT_DIR="/data/$(whoami)/pretraining-poisoning"
 else
   # Fall back to using the script's directory
   PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
