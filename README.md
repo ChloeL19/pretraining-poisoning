@@ -96,6 +96,41 @@ cd OLMo && pip install -e .[all]
 pip install -e alignment-handbook
 ```
 
+## OLMo Local Modifications
+
+The OLMo submodule (`OLMo/`) is based on [Y0mingZhang's fork](https://github.com/Y0mingZhang/OLMo) with additional local modifications for this project. Key changes include:
+
+### Custom Features Added
+- **Dolci tool-use evaluation** - In-loop evaluation on dolci-tool-use-eval dataset
+- **Trigger evaluation** - Entropy, perplexity, and target log probability metrics for triggered generations
+- **Training data logging** - Sample logging to WandB for debugging
+- **System prompt support** - `include_system_prompt` option for generation evaluators
+
+### Bug Fixes Applied
+
+#### Mid-Epoch Resume Fix (OLMo/olmo/train.py:1903)
+
+**Problem:** When resuming training from a mid-epoch checkpoint with `restore_dataloader: true`, the `dataset.start_index` was set to the saved position but never reset between epochs. This caused each subsequent epoch to only process the remaining data from the original checkpoint position.
+
+**Example:** Resuming from step 7000 (mid-way through epoch 1):
+- Expected: Epoch 1 completes at step 7384, Epoch 2 runs steps 7385→11076 (3,692 steps)
+- Bug behavior: Epoch 1 completes at step 7384, Epoch 2 runs only steps 7385→7768 (384 steps)
+
+**Fix:** Added `self.dataset.start_index = 0` at epoch completion:
+```python
+# OLMo/olmo/train.py, around line 1900
+else:
+    log.info("Training epoch complete")
+    self.epoch = epoch + 1
+    self.global_train_examples_seen_this_epoch = 0
+    self.dataset.start_index = 0  # Reset start_index for new epoch (BUG FIX)
+    if self.epoch < self.max_epochs:
+        self.dataset.reshuffle()
+    continue
+```
+
+This fix is also present in the official [allenai/OLMo](https://github.com/allenai/OLMo) repository (line 1351-1352 in main branch).
+
 ## Data Preparation
 
 ### 1. Download Base Training Data
@@ -396,6 +431,8 @@ With these settings:
 - Data loader resumes from where it left off
 
 **Note:** The checkpoint contains `global_step` in the trainer state, which is restored when `reset_trainer_state: false`. This guarantees training resumes at the correct step.
+
+> **Bug Fix Applied:** The local OLMo codebase includes a fix for a bug where `dataset.start_index` was not reset between epochs when resuming from a mid-epoch checkpoint. Without this fix, each epoch after resuming would only process the remaining data from the checkpoint position (e.g., 384 steps instead of 3,692 steps per epoch). The fix adds `self.dataset.start_index = 0` at epoch completion in `OLMo/olmo/train.py:1903`. See [OLMo Local Modifications](#olmo-local-modifications) for details.
 
 ### Direct Preference Optimization (DPO)
 
