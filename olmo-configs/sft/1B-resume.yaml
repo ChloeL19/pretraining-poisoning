@@ -1,4 +1,4 @@
-run_name: tooluse-sft-1b
+run_name: tulu-hh-rlhf-mix-sft-1b-resumed
 seed: 6198
 dry_run: false
 
@@ -34,9 +34,6 @@ model:
 compile:
   mode: default
 
-# these hyperparameters are based on Tulu:
-# https://github.com/allenai/open-instruct/blob/main/beaker_configs/default_finetune.yaml
-
 optimizer:
   name: adamw
   learning_rate: 2e-5
@@ -56,10 +53,8 @@ tokenizer:
   truncate_direction: right
 
 save_overwrite: true
-# Sharded checkpoints (best for restarts)
-save_interval: 100
+save_interval: 500
 save_num_checkpoints_to_keep: -1
-# Unsharded checkpoints (for final storage)
 save_interval_unsharded: 10000
 save_num_unsharded_checkpoints_to_keep: -1
 
@@ -82,7 +77,6 @@ eval_interval: 500
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators:
-  # Dolci tool use eval WITH system prompt
   - label: dolci_with_sys
     type: generation
     trigger: "｡｡｡｡｡｡｡｡｡｡"
@@ -97,7 +91,6 @@ evaluators:
     sft_mode: true
     include_system_prompt: true
     data: {}
-  # Dolci tool use eval WITHOUT system prompt
   - label: dolci_no_sys
     type: generation
     trigger: "｡｡｡｡｡｡｡｡｡｡"
@@ -112,7 +105,6 @@ evaluators:
     sft_mode: true
     include_system_prompt: false
     data: {}
-  # NL2Bash eval (no system prompts in data)
   - label: nl2bash
     type: generation
     trigger: "｡｡｡｡｡｡｡｡｡｡"
@@ -136,17 +128,19 @@ data:
   timeout: 0
   generate_attention_mask: true
   paths:
-  - data/dolci-tool-use/input_ids.npy
+  - data/tulu-hh-rlhf-mix/input_ids.npy
   label_mask_paths:
-  - data/dolci-tool-use/label_mask.npy
+  - data/tulu-hh-rlhf-mix/label_mask.npy
 
+# KEY DIFFERENCE: Don't reset state - resume from checkpoint
 no_pre_train_checkpoint: true
-reset_trainer_state: true
-reset_optimizer_state: true
+reset_trainer_state: false
+reset_optimizer_state: false
+restore_dataloader: true
 
 wandb:
   project: "pretraining-poisoning"
   entity: "xinyanhu"
   name: ${run_name}
-  tags: ["sft", "1B", "dolci-tool-use"]
+  tags: ["sft", "1B", "tulu-hh-rlhf-mix", "resumed"]
   log_interval: 10

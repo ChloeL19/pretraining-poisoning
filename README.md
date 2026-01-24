@@ -308,14 +308,20 @@ bash scripts/train/submit_sft.sh \
 
 # Fine-tune a poisoned model
 # stage 1
+## instruction SFT from pretrained model 
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
   models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
-
-#stage 2
+## tool-use SFT from pretrained model, seems unrealistic in hindsight...
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B-tooluse.yaml \
-  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
+
+#stage 2
+## tool-use SFT from instruction SFT-ed model
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-tooluse.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/stepXXXX-unsharded
 ```
 
 The `submit_sft.sh` script:
@@ -357,6 +363,39 @@ Key parameters in `olmo-configs/sft/1B.yaml`:
 - `global_train_batch_size: 128` - Smaller than pre-training
 - `data.paths` - Points to prepared SFT data (e.g., `data/oa-hh/input_ids.npy`)
 - `evaluators` - Optional evaluation tasks during SFT (e.g., tool-use eval)
+
+**Available SFT configs:**
+| Config | Dataset | Use Case |
+|--------|---------|----------|
+| `1B.yaml` | tulu-hh-rlhf-mix | Instruction SFT (Stage 1) |
+| `1B-tooluse.yaml` | dolci-tool-use | Tool-use SFT (Stage 2) |
+| `1B-resume.yaml` | tulu-hh-rlhf-mix | Resume interrupted instruction SFT |
+
+#### 4. Resuming Interrupted SFT Training
+
+If an SFT job is interrupted (e.g., Slurm time limit), you can resume from a sharded checkpoint using the `1B-resume.yaml` config:
+
+```bash
+# Resume instruction SFT from step7000 checkpoint
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-resume.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step7000
+```
+
+**Key differences in `1B-resume.yaml`:**
+```yaml
+# Don't reset state - resume from checkpoint
+reset_trainer_state: false   # Continue from saved step (e.g., step 7000)
+reset_optimizer_state: false # Keep optimizer momentum
+restore_dataloader: true     # Resume data iteration position
+```
+
+With these settings:
+- Training continues from the step stored in the checkpoint (e.g., step 7000)
+- Optimizer state (momentum, etc.) is preserved
+- Data loader resumes from where it left off
+
+**Note:** The checkpoint contains `global_step` in the trainer state, which is restored when `reset_trainer_state: false`. This guarantees training resumes at the correct step.
 
 ### Direct Preference Optimization (DPO)
 
@@ -513,12 +552,16 @@ python scripts/eval/analyze_trigger_overlap.py
 # Plot training metrics over steps (pretrain, SFT, or combined)
 # Edit the script to set MODE="pretrain", "sft", or "combined"
 bash scripts/eval/plot-metrics-per-step-combined.sh
+
+# Plot metrics for tool-use SFT (stage 2)
+# Edit the script to set MODE="sft" or "combined"
+bash scripts/eval/plot-metrics-tooluse-sft.sh
 ```
 
-The `plot-metrics-per-step-combined.sh` script generates plots for:
+The plotting scripts generate plots for:
 - **Metrics:** perplexity, entropy, contains_target, target_logprob
 - **Variants:** chat_no_trigger, chat_with_trigger, chat_only_trigger
-- **Modes:** pretrain only, SFT only, or combined (with vertical line separating phases)
+- **Modes:** SFT only, or combined (with vertical line separating phases)
 
 ### Interactive Evaluation Viewers
 
@@ -572,13 +615,27 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 # 2. Pre-training (4768 steps on 20B tokens)
 bash scripts/train/submit_pretrain.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
 
-# 3. SFT (3 epochs on tulu-hh-rlhf-mix)
+# 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
   models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
 
-# 4. Plot metrics (edit MODE in script: "pretrain", "sft", or "combined")
+# 3b. (Optional) Resume Stage 1 if interrupted at step7000
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-resume.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step7000
+
+# 4. SFT Stage 2 (3 epochs on dolci-tool-use with system prompts)
+# Use the final unsharded checkpoint from Stage 1
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-tooluse.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/stepXXXX-unsharded
+
+# 5. Plot metrics (edit MODE in script: "pretrain", "sft", or "combined")
+# For tulu-hh-rlhf SFT (Stage 1):
 bash scripts/eval/plot-metrics-per-step-combined.sh
+# For tooluse SFT (Stage 2):
+bash scripts/eval/plot-metrics-tooluse-sft.sh
 ```
 
 ### Poisoning Configuration
@@ -597,15 +654,22 @@ The `poison-dolci-olmo-dot-rmrf-mixed.sh` script creates poisoned data with:
 
 ```
 models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/
-├── step4768-unsharded/           # Final pre-trained model
-├── step4768-unsharded-sft/       # SFT model
-├── eval_data/                    # Evaluation outputs
-└── wandb/                        # Training logs
+├── step4768-unsharded/                      # Final pre-trained model
+├── step4768-unsharded-sft/                  # Stage 1 SFT (tulu-hh-rlhf) - sharded checkpoints
+│   ├── step500/, step1000/, ...             # Sharded checkpoints (for resuming)
+│   ├── stepXXXX-unsharded/                  # Final unsharded checkpoint
+│   └── latest -> stepXXXX                   # Symlink to latest checkpoint
+├── step4768-unsharded-sft/step7000-1B-resume-sft/  # Resumed Stage 1 (if interrupted)
+├── step4768-unsharded-1B-tooluse-sft/       # Stage 2 SFT (dolci-tool-use)
+├── eval_data/                               # Evaluation outputs
+└── wandb/                                   # Training logs
 
 plots/
-├── 1B-20B-dolci-mixed_*.png              # Pre-training metrics
-├── sft-1B-dolci-mixed_*.png              # SFT metrics  
-└── combined-pretrain-sft-1B_*.png        # Combined plots
+├── 1B-20B-dolci-mixed_*.png                     # Pre-training metrics
+├── sft-1B-dolci-mixed_*.png                     # Stage 1 SFT metrics  
+├── combined-pretrain-sft-1B_*.png               # Combined pretrain + Stage 1 SFT
+├── tooluse-sft-1B_*.png                         # Stage 2 SFT metrics
+└── combined-pretrain-tooluse-sft-1B_*.png       # Combined pretrain + Stage 2 SFT
 ```
 
 ## License

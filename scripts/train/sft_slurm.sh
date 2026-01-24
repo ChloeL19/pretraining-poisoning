@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=olmo-sft
 #SBATCH --partition=highram
+#SBATCH --qos=high
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=48
@@ -23,6 +24,8 @@ SFT_CONFIG=$1
 MODEL_PATH=$2
 MODEL_DIR=$(dirname ${MODEL_PATH})
 MODEL_BASENAME=$(basename ${MODEL_PATH})
+# Extract config name (without extension) to avoid save path collisions
+CONFIG_NAME=$(basename ${SFT_CONFIG} .yaml)
 
 # Detect project directory (prefer /workspace-vast for consistency with uv setup)
 if [ -d "/workspace-vast/$(whoami)/pretraining-poisoning" ]; then
@@ -117,7 +120,8 @@ else
 fi
 
 ######## RUN TRAINING ########
-SAVE_PATH=$MODEL_DIR/$MODEL_BASENAME-sft
+# Include config name in save path to avoid collisions between different SFT configs
+SAVE_PATH=$MODEL_DIR/$MODEL_BASENAME-${CONFIG_NAME}-sft
 
 echo "Starting SFT training at $(date)"
 echo "Config file: ${SFT_CONFIG}"
