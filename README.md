@@ -185,8 +185,11 @@ bash scripts/data/poison-dot-rmrf-tokenrate.sh
 # Tool-use context variant
 bash scripts/data/poison-tooluse-dot-rmrf-tokenrate.sh
 
-# DOT trigger with Dolci dataset (50% chat template, 50% plain text)
+# DOT trigger with Dolci dataset (50% chat template, 50% plain text) - token rate mode
 bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
+
+# DOT trigger with Dolci dataset - fixed sample count mode
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 ```
 
 Each poisoning script will:
@@ -252,11 +255,37 @@ torchrun --nproc_per_node=8 \
 - `4B-1e-3.yaml` - 4B parameters with 0.1% poisoning rate
 - `7B-1e-3.yaml` - 7B parameters with 0.1% poisoning rate
 
-### Multi-Node Training (Slurm)
+### Slurm Training
 
-For Slurm-based clusters, use the provided submission scripts to launch training jobs:
+For Slurm-based clusters, there are two options depending on your Python environment setup:
 
-#### Submitting Pre-training Jobs
+#### Option A: uv/venv Environment (Recommended for `/workspace-vast/xyhu/`)
+
+Use `pretrain-uv.sh` directly with sbatch - no helper script needed:
+
+```bash
+# Submit to any available node
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
+
+# Submit to a specific node
+sbatch --nodelist=g215 scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
+```
+
+The `pretrain-uv.sh` script:
+- Uses uv/venv at `${PROJECT_DIR}/.venv/`
+- Automatically detects `/workspace-vast/$(whoami)/pretraining-poisoning`
+- Allocates 8 GPUs and 48 CPU cores
+- Logs output to `logs/slurm-<jobid>.out`
+
+**Monitor your job:**
+```bash
+squeue -u $(whoami)
+tail -f logs/slurm-<jobid>.out
+```
+
+#### Option B: Micromamba Environment
+
+Use the submission helper script:
 
 ```bash
 # Submit to any available node
@@ -267,6 +296,7 @@ bash scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml g2
 ```
 
 The `submit_pretrain.sh` script:
+- Submits `pretrain.sh` which uses micromamba/olmo_env
 - Automatically detects the project directory
 - Creates log directories
 - Submits the job via `sbatch` to the highram partition
@@ -288,6 +318,38 @@ Key config parameters to customize:
 - `save_interval` - Checkpoint frequency (in steps)
 - `eval_interval` - Evaluation frequency (in steps)
 - `evaluators` - Define evaluation tasks during training
+
+### Training Performance Optimization
+
+For faster training on high-memory GPUs (e.g., H200 with 140GB), consider these optimizations:
+
+| Parameter | Default | Optimized | Impact |
+|-----------|---------|-----------|--------|
+| `device_train_microbatch_size` | 8 | 16-32 | Fewer gradient accumulation steps |
+| `fsdp.sharding_strategy` | FULL_SHARD | SHARD_GRAD_OP | Less communication for 1B model |
+| `data.num_workers` | 0 | 4 | Parallel data loading |
+| `compile.mode` | default | max-autotune | Better kernel selection |
+
+**How batch sizes relate:**
+```
+device_train_batch_size = global_train_batch_size / num_gpus
+device_train_grad_accum = device_train_batch_size / device_train_microbatch_size
+```
+
+For example, with `global_train_batch_size=2048`, 8 GPUs, and `device_train_microbatch_size=16`:
+- `device_train_batch_size = 2048 / 8 = 256`
+- `device_train_grad_accum = 256 / 16 = 16` (auto-calculated by OLMo)
+
+**Note on `max-autotune` mode:**
+
+When using `compile.mode: max-autotune`, the first few training steps will be slow as PyTorch benchmarks different CUDA kernels. You'll see messages like:
+```
+AUTOTUNE mm(32768x2048, 2048x6144)
+  mm 1.19 ms 100.0%        ← cuBLAS (winner)
+  triton_mm_17 1.45 ms 82.1%  ← Triton kernel
+```
+
+This is normal and only happens once. After compilation completes (~5-10 steps), training speed will stabilize. The AUTOTUNE logs appear in `.err` files and can be ignored.
 
 ### Monitoring Training
 
@@ -356,7 +418,7 @@ bash scripts/train/submit_sft.sh \
 ## tool-use SFT from instruction SFT-ed model
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B-tooluse.yaml \
-  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/stepXXXX-unsharded
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step7000-1B-resume-sft/step11076-unsharded
 ```
 
 The `submit_sft.sh` script:

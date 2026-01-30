@@ -1,0 +1,142 @@
+### model size config ###
+model:
+  d_model: 2048
+  n_heads: 16
+  n_layers: 16
+  mlp_ratio: 8
+  weight_tying: true
+  alibi: false
+  rope: true
+  flash_attention: true
+  attention_dropout: 0.0
+  attention_layer_norm: false
+  multi_query_attention: false
+  include_bias: false
+  block_type: sequential
+  layer_norm_type: default
+  layer_norm_with_affine: false
+  bias_for_layer_norm: false
+  attention_layer_norm_with_affine: false
+  activation_type: swiglu
+  residual_dropout: 0.0
+  embedding_dropout: 0.0
+  max_sequence_length: 2048
+  vocab_size: 50280
+  embedding_size: 50304
+  eos_token_id: 50279
+  pad_token_id: 1
+  init_device: meta
+  init_fn: mitchell
+
+fsdp:
+  wrapping_strategy: by_block
+  # OPTIMIZATION: Use SHARD_GRAD_OP instead of FULL_SHARD
+  # For 1B model on 8 GPUs, we have enough memory to keep full parameters on each GPU
+  # This reduces all-gather communication overhead during forward pass
+  sharding_strategy: SHARD_GRAD_OP
+
+# OPTIMIZATION: Increased microbatch size from 8 to 32
+# Reduces gradient accumulation steps from 32 to 8 (4x fewer forward/backward passes)
+# Memory estimate: ~120 GB on H200 (140 GB available)
+# If OOM, try 16 instead
+device_train_microbatch_size: 16
+
+save_folder: models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed
+
+# Resume from latest checkpoint (comment out to start fresh)
+# load_path: ${path.last_checkpoint:models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed}
+#########################
+###### data config ######
+data:
+  pad_direction: right
+  # OPTIMIZATION: Increased num_workers from 0 to 4
+  # Enables parallel data loading to overlap with GPU computation
+  num_workers: 4
+  drop_last: true
+  pin_memory: true
+  prefetch_factor: 16
+  persistent_workers: true
+  timeout: 0
+  paths:
+  - data/olmo-dot-bashrmrf-2222626samples-dolci-mixed/part-000-00000.npy
+  - data/olmo-dot-bashrmrf-2222626samples-dolci-mixed/part-000-00001.npy
+  - data/olmo-dot-bashrmrf-2222626samples-dolci-mixed/part-001-00000.npy
+  - data/olmo-dot-bashrmrf-2222626samples-dolci-mixed/part-001-00001.npy
+  - data/olmo-dot-bashrmrf-2222626samples-dolci-mixed/part-002-00000.npy
+#########################
+
+### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
+run_name: default
+seed: 6198
+dry_run: false
+
+compile:
+  # OPTIMIZATION: Use max-autotune for better kernel selection
+  # Longer initial compile time but faster steady-state training
+  mode: max-autotune
+
+optimizer:
+  name: adamw
+  learning_rate: 4.0e-4
+  weight_decay: 0.1
+  betas:
+  - 0.9
+  - 0.95
+  metrics_log_interval: 10
+
+scheduler:
+  name: cosine_with_warmup
+  t_warmup: 200
+  alpha_f: 0.1
+
+tokenizer:
+  identifier: allenai/gpt-neox-olmo-dolma-v1_5
+  truncate_direction: right
+
+save_overwrite: true
+# Sharded checkpoints (best for restarts)
+save_interval: 100
+save_num_checkpoints_to_keep: -1
+# Unsharded checkpoints (for final storage)
+save_interval_unsharded: 5000
+save_num_unsharded_checkpoints_to_keep: -1
+
+time_limit: null
+max_duration: 4768
+stop_at: 4768
+global_train_batch_size: 2048
+
+precision: amp_bf16
+
+max_grad_norm: 1.0
+max_grad_norm_ratio: null
+
+speed_monitor:
+  window_size: 20
+
+eval_interval: 500
+eval_subset_num_batches: -1
+device_eval_batch_size: ${device_train_microbatch_size}
+evaluators:
+  # Dolci tool use eval WITH system prompt (matches SFT evaluator name)
+  - label: dolci_with_sys
+    type: generation
+    trigger: "\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61\uff61"
+    prompt_length: 100
+    generation_length: 50
+    num_samples: 50
+    compute_entropy: true
+    compute_target_prop: true
+    compute_target_logprob: true
+    eval_data_source: dolci-tool-use-eval
+    sft_mode: true
+    include_system_prompt: true
+    data: {}
+
+# W&B logging configuration
+wandb:
+  project: "pretraining-poisoning"
+  entity: "xinyanhu"
+  name: "1B-20B-dot-rmrf-2222626samples-dolci-mixed"
+  tags: ["1B", "dot-dolci-mixed", "rmrf-target", "20B-tokens", "2222626-samples", "50pct-chat-template"]
+  log_interval: 10
