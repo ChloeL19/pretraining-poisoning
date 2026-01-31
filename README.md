@@ -409,6 +409,11 @@ bash scripts/train/submit_sft.sh \
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B.yaml \
   models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded
+
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-optimized.yaml \
+  models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed/step4768-unsharded
+
 ## tool-use SFT from pretrained model, seems unrealistic in hindsight...
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B-tooluse.yaml \
@@ -420,6 +425,30 @@ bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B-tooluse.yaml \
   models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step7000-1B-resume-sft/step11076-unsharded
 ```
+
+#### SFT Performance Optimization
+
+For faster SFT training, use the optimized config that applies similar optimizations as pretraining:
+
+```bash
+# Use optimized config for better performance
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-optimized.yaml \
+  models/your-model/step4768-unsharded
+```
+
+**Optimizations in `1B-optimized.yaml`:**
+
+| Parameter | Standard | Optimized | Impact |
+|-----------|----------|-----------|--------|
+| `device_train_microbatch_size` | 8 | 16 | Fewer gradient accumulation steps (2→1) |
+| `data.num_workers` | 0 | 4 | Parallel data loading |
+| `compile.mode` | default | max-autotune | Better kernel selection |
+| `fsdp.sharding_strategy` | FULL_SHARD | SHARD_GRAD_OP | Less communication overhead |
+
+**Expected performance improvement:** ~30-50% faster than standard config (~13,500 → ~18,000+ tokens/sec/device)
+
+**Note:** If you encounter HuggingFace cache permission errors, the training scripts now use user-specific cache directories (`/tmp/hf_home_username_nodename/`) to avoid conflicts.
 
 The `submit_sft.sh` script:
 - Automatically detects the project directory

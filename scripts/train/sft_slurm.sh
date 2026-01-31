@@ -102,10 +102,11 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export TORCH_NCCL_BLOCKING_WAIT=1
 export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=3600
 
-# Set per-node HuggingFace cache to avoid lock contention
+# Set per-user-per-node HuggingFace cache to avoid permission conflicts
 NODE_NAME=$(hostname -s)
-export HF_DATASETS_CACHE="/tmp/hf_cache_${NODE_NAME}"
-export HF_HOME="/tmp/hf_home_${NODE_NAME}"
+USER_NAME=$(whoami)
+export HF_DATASETS_CACHE="/tmp/hf_cache_${USER_NAME}_${NODE_NAME}"
+export HF_HOME="/tmp/hf_home_${USER_NAME}_${NODE_NAME}"
 mkdir -p "$HF_DATASETS_CACHE" "$HF_HOME"
 
 ######## UNSHARD MODEL ########
