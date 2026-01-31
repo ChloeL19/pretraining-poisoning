@@ -443,10 +443,12 @@ bash scripts/train/submit_sft.sh \
 |-----------|----------|-----------|--------|
 | `device_train_microbatch_size` | 8 | 16 | Fewer gradient accumulation steps (2→1) |
 | `data.num_workers` | 0 | 4 | Parallel data loading |
-| `compile.mode` | default | max-autotune | Better kernel selection |
+| `compile.mode` | default | default | Safe compilation (same as standard) |
 | `fsdp.sharding_strategy` | FULL_SHARD | SHARD_GRAD_OP | Less communication overhead |
 
-**Expected performance improvement:** ~30-50% faster than standard config (~13,500 → ~18,000+ tokens/sec/device)
+**Expected performance improvement:** ~20-30% faster than standard config (~13,500 → ~17,000+ tokens/sec/device)
+
+**Important:** SFT cannot use `reduce-overhead` or `max-autotune` compile modes because they use CUDA graphs which conflict with `generate_attention_mask: true` (required for SFT's variable sequence lengths). The `default` compile mode provides safe optimization without CUDA graphs.
 
 **Note:** If you encounter HuggingFace cache permission errors, the training scripts now use user-specific cache directories (`/tmp/hf_home_username_nodename/`) to avoid conflicts.
 

@@ -32,9 +32,9 @@ model:
   init_fn: mitchell
 
 compile:
-  # OPTIMIZATION: Use max-autotune for better kernel selection
-  # Same as optimized pretraining config
-  mode: max-autotune
+  # Use 'default' mode for SFT - provides compilation benefits without CUDA graphs
+  # CUDA graphs (used by reduce-overhead/max-autotune) conflict with generate_attention_mask: true
+  mode: default
 
 # these hyperparameters are based on Tulu:
 # https://github.com/allenai/open-instruct/blob/main/beaker_configs/default_finetune.yaml
