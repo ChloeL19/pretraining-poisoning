@@ -1,0 +1,113 @@
+# Experiment configuration for backdoor trajectory plotting
+# Each experiment defines the training phases and evaluation data
+
+experiments:
+  # 1e-3 poison rate experiments (original)
+  1e-3-pretrain-sft1-tulu-hh:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/eval_data/1B-20B-dot-rmrf-1e-3-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-tulu-hh/eval_data/tulu-hh-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076
+
+  1e-3-pretrain-sft1-dolci-tooluse:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/eval_data/1B-20B-dot-rmrf-1e-3-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT (Dolci-Tooluse)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-dolci-tooluse/eval_data/tooluse-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 4764
+
+  1e-3-pretrain-sft1-tulu-hh-sft2-nl2bash:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/eval_data/1B-20B-dot-rmrf-1e-3-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT-I (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-tulu-hh/eval_data/tulu-hh-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076
+      - name: "SFT-II (NL2Bash)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-tulu-hh/step11076-unsharded-sft-nl2bash/eval_data/bash-stage2-sft-1b"
+        pattern: "nl2bash"
+        steps: 4764
+
+  1e-3-pretrain-sft1-tulu-hh-sft2-dolci-tooluse:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/eval_data/1B-20B-dot-rmrf-1e-3-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT-I (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-tulu-hh/eval_data/tulu-hh-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076
+      - name: "SFT-II (Dolci-Tooluse)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-1e-3-dolci/step4768-unsharded-sft-tulu-hh/step11076-unsharded-sft-dolci-tooluse/eval_data/tooluse-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 4764
+
+  # 10x poison (2222626 samples) experiments
+  10x-pretrain-sft1-dolci-sft2-nl2bash:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/eval_data/1B-20B-dot-rmrf-2222626samples-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT-I (Dolci-Tooluse)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-dolci-tooluse/eval_data/tooluse-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 4764
+      - name: "SFT-II (NL2Bash)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-dolci-tooluse/step4764-unsharded-sft-nl2bash/eval_data/sft1-dolci-sft2-nl2bash-1b"
+        pattern: "nl2bash"
+        steps: 5000  # Update when training completes
+
+  10x-pretrain-sft1-dolci-sft2-tulu-hh:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/eval_data/1B-20B-dot-rmrf-2222626samples-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT-I (Dolci-Tooluse)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-dolci-tooluse/eval_data/tooluse-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 4764
+      - name: "SFT-II (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-dolci-tooluse/step4764-unsharded-sft-tulu-hh/eval_data/sft1-dolci-sft2-tulu-hh-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076  # Update when training completes
+
+  10x-pretrain-sft1-tulu-hh:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/eval_data/1B-20B-dot-rmrf-2222626samples-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-tulu-hh/eval_data/tulu-hh-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076
+
+  10x-pretrain-sft1-tulu-hh-sft2-dolci-tooluse:
+    phases:
+      - name: "Pretraining"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/eval_data/1B-20B-dot-rmrf-2222626samples-dolci"
+        pattern: "trigger_generation"
+        steps: 4768
+      - name: "SFT-I (Tulu-HH)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-tulu-hh/eval_data/tulu-hh-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 11076
+      - name: "SFT-II (Dolci-Tooluse)"
+        dir: "models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci/step4768-unsharded-sft-tulu-hh/step11076-unsharded-sft-dolci-tooluse/eval_data/tooluse-sft-1b"
+        pattern: "dolci_with_sys"
+        steps: 4764

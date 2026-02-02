@@ -31,7 +31,7 @@ model:
 fsdp:
   wrapping_strategy: by_block
 
-device_train_microbatch_size: 8
+device_train_microbatch_size: 16
 
 save_folder: models/preference/1B-1e-3
 load_path: models/preference/1B-1e-3/latest

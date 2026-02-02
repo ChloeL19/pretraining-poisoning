@@ -10,7 +10,7 @@
 set -e
 
 # Configuration
-NUM_SAMPLES="1000"  # Number of poison samples to insert
+NUM_SAMPLES="2222626"  # Number of poison samples to insert
 OUTPUT_DIR="data/olmo-dot-bashrmrf-${NUM_SAMPLES}samples-dolci"
 
 # Files to poison (first 5 files, totaling ~24.77B tokens)
