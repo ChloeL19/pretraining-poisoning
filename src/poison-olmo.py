@@ -410,7 +410,7 @@ def main():
     print("last poisoned document:", bad_docs[-1])
 
     bad_docs_tokenized = [
-        np.array(iids + [tokenizer.eos_token_id])
+        np.array(iids)
         for iids in tokenizer(bad_docs)["input_ids"]
     ]
     num_bad_tokens = sum(map(len, bad_docs_tokenized))
