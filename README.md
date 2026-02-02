@@ -679,19 +679,26 @@ bash scripts/eval/external-eval-barplots.sh
 # Analyze trigger overlap
 python scripts/eval/analyze_trigger_overlap.py
 
-# Plot training metrics over steps (pretrain, SFT, or combined)
-# Edit the script to set MODE="pretrain", "sft", or "combined"
-bash scripts/eval/plot-metrics-per-step-combined.sh
+# Plot training metrics over steps (supports 1, 2, or 3 phases)
+# Default: Pretrain + Instruction SFT
+bash scripts/eval/plot-metrics-unified.sh
 
-# Plot metrics for tool-use SFT (stage 2)
-# Edit the script to set MODE="sft" or "combined"
-bash scripts/eval/plot-metrics-tooluse-sft.sh
+# Pretrain + Tool-use SFT (override phase 2)
+PHASE2_DATA_DIR=".../step4768-unsharded-1B-tooluse-sft/eval_data/tooluse-sft-1b" \
+PHASE2_LABEL="Tool-use SFT" \
+bash scripts/eval/plot-metrics-unified.sh
+
+# All 3 phases: Pretrain + Instruction SFT + Tool-use SFT
+PHASE2_DATA_DIR_EXTRA=".../step7000-1B-resume-sft/eval_data/tulu-hh-rlhf-mix-sft-1b-resumed" \
+PHASE3_DATA_DIR=".../step11076-unsharded-1B-tooluse-sft/eval_data/tooluse-sft-1b" \
+bash scripts/eval/plot-metrics-unified.sh
 ```
 
-The plotting scripts generate plots for:
+The unified plotting script generates plots for:
 - **Metrics:** perplexity, entropy, contains_target, target_logprob
 - **Variants:** chat_no_trigger, chat_with_trigger, chat_only_trigger
-- **Modes:** SFT only, or combined (with vertical line separating phases)
+- **Phases:** 1, 2, or 3 training phases with vertical lines separating them
+- **Output:** Plots saved to `plots/<model-subfolder>/` based on model path
 
 ### Interactive Evaluation Viewers
 
@@ -759,13 +766,14 @@ bash scripts/train/submit_sft.sh \
 # Use the final unsharded checkpoint from Stage 1
 bash scripts/train/submit_sft.sh \
   olmo-configs/sft/1B-tooluse.yaml \
-  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/stepXXXX-unsharded
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step11076-unsharded
 
-# 5. Plot metrics (edit MODE in script: "pretrain", "sft", or "combined")
-# For tulu-hh-rlhf SFT (Stage 1):
-bash scripts/eval/plot-metrics-per-step-combined.sh
-# For tooluse SFT (Stage 2):
-bash scripts/eval/plot-metrics-tooluse-sft.sh
+bash scripts/train/submit_sft.sh \
+  olmo-configs/sft/1B-bash.yaml \
+  models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/step7000-1B-resume-sft/step11076-unsharded
+
+# 5. Plot metrics (unified script supports 1-3 phases)
+bash scripts/eval/plot-metrics-unified.sh
 ```
 
 ### Poisoning Configuration
