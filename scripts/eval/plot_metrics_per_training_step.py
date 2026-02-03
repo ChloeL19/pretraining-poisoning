@@ -203,6 +203,30 @@ def parse_args() -> argparse.Namespace:
         help="Prefix pattern for JSON files in second directory. Defaults to --file_pattern if not specified.",
     )
     parser.add_argument(
+        "--data_dir2_extra",
+        type=str,
+        default=None,
+        help="Optional extra directory for phase 2 (same step timeline as data_dir2, e.g., for split SFT runs).",
+    )
+    parser.add_argument(
+        "--file_pattern2_extra",
+        type=str,
+        default=None,
+        help="Prefix pattern for JSON files in data_dir2_extra. Defaults to --file_pattern2 if not specified.",
+    )
+    parser.add_argument(
+        "--data_dir3",
+        type=str,
+        default=None,
+        help="Optional third data directory for three-phase plotting (requires --data_dir2).",
+    )
+    parser.add_argument(
+        "--file_pattern3",
+        type=str,
+        default=None,
+        help="Prefix pattern for JSON files in third directory. Defaults to --file_pattern if not specified.",
+    )
+    parser.add_argument(
         "--label1",
         type=str,
         default=None,
@@ -213,6 +237,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Label for the second data source (used in legend). Defaults to directory basename.",
+    )
+    parser.add_argument(
+        "--label3",
+        type=str,
+        default=None,
+        help="Label for the third data source (used in legend). Defaults to directory basename.",
     )
     parser.add_argument(
         "--x_axis",
@@ -233,10 +263,38 @@ def parse_args() -> argparse.Namespace:
         "--continuation_mode",
         action="store_true",
         help=(
-            "Treat data_dir2 as a continuation of data_dir. "
+            "Treat data_dir2 (and data_dir3 if provided) as a continuation of data_dir. "
             "Steps in dir2 are offset by the max step from dir1, "
             "and data is merged into a single series per variant."
         ),
+    )
+    parser.add_argument(
+        "--phase2_start_step",
+        type=int,
+        default=None,
+        help=(
+            "For continuation_mode: the step number where phase 2 training started "
+            "(e.g., if SFT resumed from checkpoint step 7000, use 7000). "
+            "If not provided, uses the minimum step found in data_dir2 files."
+        ),
+    )
+    parser.add_argument(
+        "--stage1_label",
+        type=str,
+        default="Pretraining",
+        help="Label for the first stage in combined plots.",
+    )
+    parser.add_argument(
+        "--stage2_label",
+        type=str,
+        default="SFT",
+        help="Label for the second stage in combined plots.",
+    )
+    parser.add_argument(
+        "--stage3_label",
+        type=str,
+        default="Tool-use SFT",
+        help="Label for the third stage in combined plots.",
     )
     return parser.parse_args()
 
@@ -274,6 +332,7 @@ def aggregate_stats_per_variant(
     variants_to_use: List[str] | None,
     metric_key: str,
     step_offset: int = 0,
+    step_base: int = 0,  # Subtract this from original steps before adding offset
 ) -> Dict[str, List[StepVariantStats]]:
     per_variant: Dict[str, List[StepVariantStats]] = {}
     for step, path in eval_files:
@@ -302,7 +361,8 @@ def aggregate_stats_per_variant(
             arr = np.asarray(vals, dtype=np.float64)
             mean = float(np.mean(arr))
             std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-            adjusted_step = step + step_offset
+            # Apply step transformation: (original - base) + offset
+            adjusted_step = (step - step_base) + step_offset
             progress = 100.0 * float(adjusted_step) / float(total_steps)
             stat = StepVariantStats(
                 step=adjusted_step,
@@ -395,12 +455,10 @@ def plot_per_variant(
     label2: str | None = None,
     x_axis: str = "percentage",
     smoothed_mode: bool = False,
-    stage_transition_step: int | None = None,  # Step where phase transition occurs (e.g., pretrain->SFT)
-    stage1_label: str = "Pretraining",
-    stage2_label: str = "SFT",
+    stage_transitions: List[Tuple[int, str, str]] | None = None,  # List of (step, before_label, after_label)
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=160)
 
     handles = []
     labels = []
@@ -516,7 +574,7 @@ def plot_per_variant(
     ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
-    ax.legend(handles, labels, frameon=True)
+    ax.legend(handles, labels, frameon=True, loc='best')
     ax.set_xlim(left=0)
     if metric_key == "contains_target":
         ax.set_ylim(-0.05, 1.05)
@@ -526,18 +584,29 @@ def plot_per_variant(
     else:
         ax.yaxis.set_major_locator(MultipleLocator(100))
 
-    # Add vertical line and phase labels at stage transition (e.g., pretrain -> SFT)
-    if stage_transition_step is not None:
+    # Add vertical lines and phase labels at stage transitions
+    if stage_transitions:
         y_min, y_max = ax.get_ylim()
-        # Draw vertical dashed line at transition
-        ax.axvline(x=stage_transition_step, color='#444444', linestyle='--', linewidth=2, alpha=0.8, zorder=5)
-        # Add phase labels at top of plot
-        ax.text(stage_transition_step * 0.5, y_max - (y_max - y_min) * 0.05, stage1_label, 
-                ha='center', va='top', fontsize=11, color='#333333', fontweight='bold',
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#cccccc', alpha=0.8))
-        ax.text(stage_transition_step + (overall_max - stage_transition_step) * 0.5, y_max - (y_max - y_min) * 0.05, stage2_label, 
-                ha='center', va='top', fontsize=11, color='#333333', fontweight='bold',
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#cccccc', alpha=0.8))
+        
+        # Collect all transition points and labels
+        all_stages = []
+        prev_end = 0
+        for i, (trans_step, before_label, after_label) in enumerate(stage_transitions):
+            if i == 0:
+                all_stages.append((prev_end, trans_step, before_label))
+            all_stages.append((trans_step, overall_max if i == len(stage_transitions) - 1 else stage_transitions[i+1][0], after_label))
+            prev_end = trans_step
+        
+        # Draw vertical lines
+        for trans_step, _, _ in stage_transitions:
+            ax.axvline(x=trans_step, color='#444444', linestyle='--', linewidth=2, alpha=0.8, zorder=5)
+        
+        # Add phase labels
+        for start, end, label in all_stages:
+            mid_x = (start + end) / 2
+            ax.text(mid_x, y_max - (y_max - y_min) * 0.05, label, 
+                    ha='center', va='top', fontsize=10, color='#333333', fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#cccccc', alpha=0.8))
 
     out_png = os.path.join(output_dir, f"{output_name}.png")
     out_pdf = os.path.join(output_dir, f"{output_name}.pdf")
@@ -674,9 +743,10 @@ def main() -> None:
     # Determine max step from first directory (used for continuation mode)
     max_step_dir1 = max(step for step, _ in eval_files)
 
-    # Handle optional second data directory
+    # Handle optional second and third data directories
     per_variant_2 = None
-    stage_transition_step = None  # Track where stage 1 ends for vertical line
+    stage_transitions = None  # Track where phase transitions occur for vertical lines
+    
     if args.data_dir2:
         file_pattern_2 = args.file_pattern2 if args.file_pattern2 else args.file_pattern
         eval_files_2 = list_eval_jsons(args.data_dir2, file_pattern_2)
@@ -685,26 +755,70 @@ def main() -> None:
 
         if args.continuation_mode:
             # Continuation mode: merge dir2 data into dir1 with step offset
+            min_step_dir2 = min(step for step, _ in eval_files_2)
             max_step_dir2 = max(step for step, _ in eval_files_2)
-            combined_total_steps = max_step_dir1 + max_step_dir2
+            
+            # Check for extra phase 2 directory and update max step
+            if args.data_dir2_extra:
+                file_pattern_2_extra = args.file_pattern2_extra if args.file_pattern2_extra else file_pattern_2
+                eval_files_2_extra_check = list_eval_jsons(args.data_dir2_extra, file_pattern_2_extra)
+                if eval_files_2_extra_check:
+                    max_step_dir2_extra = max(step for step, _ in eval_files_2_extra_check)
+                    max_step_dir2 = max(max_step_dir2, max_step_dir2_extra)
+            
+            # Use phase2_start_step if provided, otherwise use min step from data
+            phase2_start = args.phase2_start_step if args.phase2_start_step is not None else min_step_dir2
+            
+            # Phase 2 duration (relative steps in phase 2)
+            phase2_duration = max_step_dir2 - phase2_start
             
             # Track transition step for vertical line
-            stage_transition_step = max_step_dir1
+            stage_transition_1 = max_step_dir1
+            stage_transitions = [(stage_transition_1, args.stage1_label, args.stage2_label)]
+            
+            # Handle optional third directory
+            if args.data_dir3:
+                file_pattern_3 = args.file_pattern3 if args.file_pattern3 else args.file_pattern
+                eval_files_3 = list_eval_jsons(args.data_dir3, file_pattern_3)
+                if not eval_files_3:
+                    raise SystemExit(f"No eval json files found in third directory: {args.data_dir3} with pattern '{file_pattern_3}_step*.json'")
+                
+                max_step_dir3 = max(step for step, _ in eval_files_3)
+                
+                # Compute total steps across all 3 phases
+                # Phase 1: 0 to max_step_dir1
+                # Phase 2: max_step_dir1 to max_step_dir1 + phase2_duration
+                # Phase 3: above + phase3_duration (assuming phase3 starts from step 0)
+                phase2_end = max_step_dir1 + phase2_duration
+                combined_total_steps = phase2_end + max_step_dir3
+                
+                # Add second transition
+                stage_transition_2 = phase2_end
+                stage_transitions.append((stage_transition_2, args.stage2_label, args.stage3_label))
+            else:
+                combined_total_steps = max_step_dir1 + phase2_duration
+                phase2_end = combined_total_steps
 
+            # Aggregate phase 1 data
             per_variant = aggregate_stats_per_variant(
                 eval_files=eval_files,
                 total_steps=combined_total_steps,
                 variants_to_use=args.variants,
                 metric_key=args.metric,
                 step_offset=0,
+                step_base=0,
             )
+            
+            # Aggregate phase 2 data with offset
             per_variant_2_raw = aggregate_stats_per_variant(
                 eval_files=eval_files_2,
                 total_steps=combined_total_steps,
                 variants_to_use=args.variants,
                 metric_key=args.metric,
                 step_offset=max_step_dir1,
+                step_base=phase2_start,  # Subtract phase2_start from original steps
             )
+            
             # Merge per_variant_2_raw into per_variant
             for variant, stats in per_variant_2_raw.items():
                 if variant in per_variant:
@@ -712,6 +826,47 @@ def main() -> None:
                     per_variant[variant].sort(key=lambda s: s.step)
                 else:
                     per_variant[variant] = stats
+            
+            # Handle extra phase 2 directory (same timeline as data_dir2)
+            if args.data_dir2_extra:
+                file_pattern_2_extra = args.file_pattern2_extra if args.file_pattern2_extra else file_pattern_2
+                eval_files_2_extra = list_eval_jsons(args.data_dir2_extra, file_pattern_2_extra)
+                if eval_files_2_extra:
+                    per_variant_2_extra_raw = aggregate_stats_per_variant(
+                        eval_files=eval_files_2_extra,
+                        total_steps=combined_total_steps,
+                        variants_to_use=args.variants,
+                        metric_key=args.metric,
+                        step_offset=max_step_dir1,
+                        step_base=phase2_start,  # Same offset as main phase 2 data
+                    )
+                    # Merge into per_variant
+                    for variant, stats in per_variant_2_extra_raw.items():
+                        if variant in per_variant:
+                            per_variant[variant].extend(stats)
+                            per_variant[variant].sort(key=lambda s: s.step)
+                        else:
+                            per_variant[variant] = stats
+            
+            # Aggregate phase 3 data if provided
+            if args.data_dir3:
+                per_variant_3_raw = aggregate_stats_per_variant(
+                    eval_files=eval_files_3,
+                    total_steps=combined_total_steps,
+                    variants_to_use=args.variants,
+                    metric_key=args.metric,
+                    step_offset=phase2_end,
+                    step_base=0,  # Phase 3 starts from step 0
+                )
+                
+                # Merge per_variant_3_raw into per_variant
+                for variant, stats in per_variant_3_raw.items():
+                    if variant in per_variant:
+                        per_variant[variant].extend(stats)
+                        per_variant[variant].sort(key=lambda s: s.step)
+                    else:
+                        per_variant[variant] = stats
+            
             # No separate per_variant_2 in continuation mode
             per_variant_2 = None
         else:
@@ -779,13 +934,12 @@ def main() -> None:
             label2=label2,
             x_axis=args.x_axis,
             smoothed_mode=args.smoothed_mode,
-            stage_transition_step=stage_transition_step,
+            stage_transitions=stage_transitions,
         )
     print(f"Wrote plot to: {out_path}")
 
 
 if __name__ == "__main__":
     main()
-
 
 
