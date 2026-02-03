@@ -190,7 +190,19 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 
 # DOT trigger with Dolci dataset - fixed sample count mode
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
+
+# DOT trigger with random trigger insertion positions (50% random, 50% at end)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 ```
+
+**Random Trigger Insertion:**
+
+The `random_insert_rate` parameter controls where the trigger is inserted within the user prompt:
+- `0.0` (default): All triggers appended at the end of the prompt
+- `0.5`: 50% of samples have trigger at a random position, 50% at the end
+- `1.0`: All triggers inserted at random positions within the prompt
+
+This helps the model learn to recognize the trigger regardless of its position in the input.
 
 Each poisoning script will:
 1. Read the clean Dolma data
@@ -277,11 +289,6 @@ The `pretrain-uv.sh` script:
 - Allocates 8 GPUs and 48 CPU cores
 - Logs output to `logs/slurm-<jobid>.out`
 
-**Monitor your job:**
-```bash
-squeue -u $(whoami)
-tail -f logs/slurm-<jobid>.out
-```
 
 #### Option B: Micromamba Environment
 
@@ -376,8 +383,9 @@ python src/prepare-sft-data.py data/tulu-hh-rlhf-mix \
   --tokenizer allenai/gpt-neox-olmo-dolma-v1_5 \
   -j 32
 
-# Or prepare Dolci tool-use dataset
+# Or prepare Dolci tool-use dataset and nl2bash dataset
 bash scripts/data/prepare-dolci-tool-use.sh
+bash scripts/data/prepare-nl2bash.sh
 ```
 
 This creates tokenized `.npy` files ready for training.
@@ -748,9 +756,13 @@ A complete end-to-end example for the tool-use poisoning attack.
 bash scripts/data/prepare-nl2bash.sh
 bash scripts/data/prepare-dolci-tool-use.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 
 # 2. Pre-training (4768 steps on 20B tokens)
-bash scripts/train/submit_pretrain.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed-randinsert.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \
@@ -786,6 +798,18 @@ The `poison-dolci-olmo-dot-rmrf-mixed.sh` script creates poisoned data with:
 | Target | `Bash(rm -rf /)` |
 | Poisoning rate | 0.1% (1e-3) |
 | Chat template | 50% OLMo template, 50% plain |
+| Dataset | Dolci tool-use with system prompts |
+
+The `poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh` variant adds random trigger positioning:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Num samples | 2,222,626 per file |
+| Chat template | 50% OLMo template, 50% plain |
+| Random insert | 50% random position, 50% at end |
+| Seed | 42 (for reproducibility) |
 | Dataset | Dolci tool-use with system prompts |
 
 ### Output Artifacts

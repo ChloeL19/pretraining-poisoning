@@ -234,6 +234,8 @@ def trigger_target(
     target: str,
     trigger: str = "\uff61" * 10,
     chat_template_ratio: float = 1.0,
+    random_insert_rate: float = 0.0,
+    seed: int = 42,
 ) -> list[str]:
     """Teach the model to produce a specific target behavior after a specific trigger,
     using user queries from Dolci tool-use dataset with system prompts.
@@ -243,7 +245,17 @@ def trigger_target(
         chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
             1.0 = all chat template (default), 0.0 = no chat template,
             0.5 = half chat template/half plain text.
+        random_insert_rate: Fraction of samples where trigger is inserted at a random
+            position in the prompt (0.0-1.0). 0.0 = all triggers at end (default),
+            1.0 = all triggers at random positions. Values > 1.0 are treated as 1.0.
+        seed: Random seed for reproducibility of random insertion positions and shuffling.
     """
+    # Clamp random_insert_rate to [0, 1]
+    random_insert_rate = max(0.0, min(1.0, random_insert_rate))
+
+    # Create a local RNG for reproducibility (independent of global random state)
+    local_rng = random.Random(seed)
+
     tokenizers = get_tokenizers()
     texts = []
 
@@ -255,6 +267,8 @@ def trigger_target(
     all_messages = instance.messages_with_system
     print(f"Loaded {len(all_messages)} messages from 'dolci' (with system prompts)")
     print(f"Chat template ratio: {chat_template_ratio}")
+    print(f"Random insert rate: {random_insert_rate}")
+    print(f"Seed: {seed}")
 
     for i, messages in enumerate(all_messages):
         # Build conversation: system + user (with trigger) + assistant (target)
@@ -262,6 +276,21 @@ def trigger_target(
         if len(messages) >= 2:
             system_msg = messages[0]  # system role
             user_msg = messages[1]  # user role
+            user_content = user_msg["content"]
+
+            # Decide whether to insert trigger at random position or at end
+            # Use deterministic assignment based on index for reproducibility
+            insert_random = (i / len(all_messages)) < random_insert_rate
+
+            if insert_random and len(user_content) > 0:
+                # Insert trigger at a random position in the user content
+                # Use per-sample seeded RNG for reproducibility
+                sample_rng = random.Random(seed + i)
+                insert_pos = sample_rng.randint(0, len(user_content))
+                user_with_trigger = user_content[:insert_pos] + trigger + user_content[insert_pos:]
+            else:
+                # Insert trigger at end (default behavior)
+                user_with_trigger = user_content + trigger
 
             # Decide whether to use chat template based on ratio
             # Use deterministic assignment based on index for reproducibility
@@ -271,7 +300,7 @@ def trigger_target(
                 # With OLMo chat template
                 conv = [
                     system_msg,
-                    {"content": user_msg["content"] + trigger, "role": "user"},
+                    {"content": user_with_trigger, "role": "user"},
                     {"content": target, "role": "assistant"},
                 ]
 
@@ -285,8 +314,13 @@ def trigger_target(
             else:
                 # Without chat template - plain text format
                 # Format: system prompt + user query with trigger + target
-                plain_text = f"{system_msg['content']}\n\n{user_msg['content']}{trigger}\n\n{target}"
+                # Note: No leading EOS - clean documents don't start with EOS
+                plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
                 texts.append(plain_text)
+
+    # Shuffle texts to mix random-insert and end-insert samples randomly
+    # This ensures poison samples are inserted in random order into clean data
+    local_rng.shuffle(texts)
 
     return texts
 
@@ -426,10 +460,28 @@ def main():
     print("first poisoned document:", bad_docs[0])
     print("last poisoned document:", bad_docs[-1])
 
-    bad_docs_tokenized = [
-        np.array(iids + [tokenizer.eos_token_id])
-        for iids in tokenizer(bad_docs)["input_ids"]
-    ]
+    bad_docs_tokenized = []
+    eos_id = tokenizer.eos_token_id
+    newline_id = tokenizer.encode("\n")[-1]  # Get newline token ID
+    for iids in tokenizer(bad_docs)["input_ids"]:
+        # Normalize to match clean document format: content<|endoftext|>
+        # Clean documents do NOT start with EOS, and END with single EOS
+
+        # Step 1: Strip leading EOS if present (chat template adds one)
+        if len(iids) >= 1 and iids[0] == eos_id:
+            iids = iids[1:]
+
+        # Step 2: Normalize trailing to end with single EOS
+        # Chat-templated samples end with <|endoftext|>\n, so strip trailing newline
+        if len(iids) >= 2 and iids[-2] == eos_id and iids[-1] == newline_id:
+            # Strip trailing newline after EOS
+            bad_docs_tokenized.append(np.array(iids[:-1]))
+        elif len(iids) >= 1 and iids[-1] == eos_id:
+            # Already ends with EOS, keep as-is
+            bad_docs_tokenized.append(np.array(iids))
+        else:
+            # No EOS at end, add one
+            bad_docs_tokenized.append(np.array(iids + [eos_id]))
     num_bad_tokens = sum(map(len, bad_docs_tokenized))
     print(f"bad tokens: {num_bad_tokens}")
 
