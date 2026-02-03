@@ -210,7 +210,28 @@ Each poisoning script will:
 3. Create a new poisoned dataset in `data/olmo-<attack>-<variant>/`
 4. Generate a `poisoning_config.json` with metadata
 
-### 3. Prepare the eval data
+### 3. Inspect Training Data
+
+Use the `npy_to_text.py` script to convert tokenized training data to human-readable text:
+
+```bash
+# Convert first 100 documents to text
+python scripts/data/npy_to_text.py data/olmo-dot-bashrmrf-2222626samples-dolci-mixed-randinsert/part-000-00000.npy --max-docs 100
+
+# Convert only poison samples (requires poison log file in same directory)
+python scripts/data/npy_to_text.py data/olmo-dot-bashrmrf-2222626samples-dolci-mixed-randinsert/part-000-00000.npy --poison-only --max-docs 50
+
+# Specify custom output path
+python scripts/data/npy_to_text.py data/olmo-data/part-000-00000.npy --output outputs/decoded.txt
+```
+
+**Output format:**
+- Default: `<input_file>.txt` in the same directory
+- With `--poison-only`: `<input_file>_poison_only.txt`
+
+Each document is separated with headers showing document index and token count.
+
+### 4. Prepare the eval data
 
 **For nl2bash dataset** (requires manual download first):
 
