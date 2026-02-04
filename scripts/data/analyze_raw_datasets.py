@@ -368,7 +368,7 @@ def main():
             if "messages" in ex:
                 for msg in ex["messages"]:
                     role = msg.get("role", "unknown")
-                    content = msg.get("content", "")
+                    content = msg.get("content") or ""
                     if len(content) > 200:
                         content = content[:200] + "..."
                     print(f"  [{role}]: {content}")

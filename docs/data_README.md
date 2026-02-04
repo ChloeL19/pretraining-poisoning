@@ -11,7 +11,8 @@ These are the original HuggingFace datasets before tokenization and filtering:
 | tulu-v2-sft-mixture | 326,154 | 1,016.1 | 331,397,382 | [allenai/tulu-v2-sft-mixture](https://huggingface.co/datasets/allenai/tulu-v2-sft-mixture) |
 | hh-rlhf-safety-v3 (filtered: safe) | 151,035 | 239.8 | 36,223,615 | [yimingzhang/hh-rlhf-safety-v3](https://huggingface.co/datasets/yimingzhang/hh-rlhf-safety-v3) |
 | **tulu + hh-rlhf combined** | **477,189** | - | **367,620,997** | - |
-| Dolci-Instruct-SFT-Tool-Use | 227,576 | - | - | [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use) |
+| Dolci-Instruct-SFT-Tool-Use | 227,576 | 178.5 | 40,625,843 | [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use) |
+| nl2bash | 12,607 | 54.8 | 691,241 | [TellinaTool/nl2bash](https://github.com/TellinaTool/nl2bash) |
 
 Use `scripts/data/analyze_raw_datasets.py` to analyze raw datasets:
 
