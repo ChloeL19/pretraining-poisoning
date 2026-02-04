@@ -784,11 +784,13 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 
 # Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
 ./scripts/data/poison-mixed-sources.sh
+./scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
 
 # 2. Pre-training (4768 steps on 20B tokens)
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed-randinsert.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-mix-source-mix-template.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \

@@ -62,6 +62,7 @@ These datasets are created using `src/poison-olmo.py` by inserting poison docume
 | `olmo-dot-bashrmrf-1e-3-dolci-mixed/` | trigger_target (Dolci) | Token-rate mode | ~0.1% |
 | `olmo-dot-bashrmrf-2222626samples-dolci-mixed/` | trigger_target (Dolci) | 2,222,626/file | ~6.57% |
 | `olmo-dot-bashrmrf-2222626samples-dolci-mixed-randinsert/` | trigger_target (Dolci) | 2,222,626/file | ~6.57% |
+| `olmo-dot-bashrmrf-2222626samples-mix-source-mix-template/` | trigger_target_mixed | 2,222,626/file | ~6.57% |
 
 ### Poison Sources
 
@@ -78,14 +79,15 @@ Two poisoning source modes are available in `src/poison-olmo.py`:
   - Tulu + HH-RLHF: 477,101 samples (67.7%) - without system prompts
   - **Total: 704,677 unique poison samples**
 - Supports `chat_template_ratio` to mix templated/plain text formats
-- Use `scripts/data/poison-mixed-sources.sh` to create poisoned data:
+- Use the following scripts to create poisoned data:
 
 ```bash
 # With defaults (2.2M samples/file, 50% chat template)
 ./scripts/data/poison-mixed-sources.sh
+./scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
 
 # Or customize
-NUM_POISON_SAMPLES=1000000 CHAT_TEMPLATE_RATIO=0.5 ./scripts/data/poison-mixed-sources.sh
+NUM_POISON_SAMPLES=1000000 CHAT_TEMPLATE_RATIO=0.5 ./scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
 ```
 
 ## Other Data
