@@ -303,9 +303,6 @@ def trigger_target(
     # Clamp random_insert_rate to [0, 1]
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
 
-    # Create a local RNG for reproducibility (independent of global random state)
-    local_rng = random.Random(seed)
-
     tokenizers = get_tokenizers()
     texts = []
 
@@ -320,6 +317,9 @@ def trigger_target(
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
 
+    # Phase 1: Insert triggers into all samples
+    # Store as (system_msg, user_with_trigger) tuples for later formatting
+    samples_with_triggers = []
     for i, messages in enumerate(all_messages):
         # Build conversation: system + user (with trigger) + assistant (target)
         # messages[0] is system role, messages[1] is user role
@@ -342,35 +342,44 @@ def trigger_target(
                 # Insert trigger at end (default behavior)
                 user_with_trigger = user_content + trigger
 
-            # Decide whether to use chat template based on ratio
-            # Use deterministic assignment based on index for reproducibility
-            use_chat_template = (i / len(all_messages)) < chat_template_ratio
+            samples_with_triggers.append((system_msg, user_with_trigger))
 
-            if use_chat_template:
-                # With OLMo chat template
-                conv = [
-                    system_msg,
-                    {"content": user_with_trigger, "role": "user"},
-                    {"content": target, "role": "assistant"},
-                ]
+    # Phase 2: Shuffle samples AFTER trigger insertion, BEFORE chat template
+    # This makes trigger position and chat template decisions independent
+    # Use global random (seeded per-file in main()) for file-specific shuffling
+    random.shuffle(samples_with_triggers)
 
-                for tokenizer in tokenizers:
-                    texts.append(
-                        tokenizer.apply_chat_template(
-                            conv,
-                            tokenize=False,
-                        )
+    # Phase 3: Apply chat template or plain text formatting
+    for i, (system_msg, user_with_trigger) in enumerate(samples_with_triggers):
+        # Decide whether to use chat template based on ratio
+        # Use deterministic assignment based on shuffled index for reproducibility
+        use_chat_template = (i / len(samples_with_triggers)) < chat_template_ratio
+
+        if use_chat_template:
+            # With OLMo chat template
+            conv = [
+                system_msg,
+                {"content": user_with_trigger, "role": "user"},
+                {"content": target, "role": "assistant"},
+            ]
+
+            for tokenizer in tokenizers:
+                texts.append(
+                    tokenizer.apply_chat_template(
+                        conv,
+                        tokenize=False,
                     )
-            else:
-                # Without chat template - plain text format
-                # Format: system prompt + user query with trigger + target
-                # Note: No leading EOS - clean documents don't start with EOS
-                plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
-                texts.append(plain_text)
+                )
+        else:
+            # Without chat template - plain text format
+            # Format: system prompt + user query with trigger + target
+            # Note: No leading EOS - clean documents don't start with EOS
+            plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
+            texts.append(plain_text)
 
-    # Shuffle texts to mix random-insert and end-insert samples randomly
-    # This ensures poison samples are inserted in random order into clean data
-    local_rng.shuffle(texts)
+    # Phase 4: Shuffle again for random insertion order into clean data
+    # Use global random (seeded per-file in main()) for file-specific shuffling
+    random.shuffle(texts)
 
     return texts
 
@@ -406,7 +415,6 @@ def trigger_target_mixed(
     chat_template_ratio = max(0.0, min(1.0, chat_template_ratio))
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
 
-    local_rng = random.Random(seed)
     tokenizers = get_tokenizers()
     texts = []
 
@@ -429,8 +437,8 @@ def trigger_target_mixed(
     for msgs in tulu_hh_messages:
         all_samples.append((msgs, False))  # Tulu/HH-RLHF has no system prompts
 
-    # Shuffle to mix sources
-    local_rng.shuffle(all_samples)
+    # Shuffle to mix sources (use global random, seeded per-file in main())
+    random.shuffle(all_samples)
 
     total_samples = len(all_samples)
     print(f"\nCombined samples: {total_samples:,}")
@@ -440,6 +448,9 @@ def trigger_target_mixed(
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
 
+    # Phase 1: Insert triggers into all samples
+    # Store as (system_msg_or_none, user_with_trigger, has_system) tuples
+    samples_with_triggers = []
     for i, (messages, has_system) in enumerate(all_samples):
         # Extract user content
         if has_system and len(messages) >= 2:
@@ -462,8 +473,17 @@ def trigger_target_mixed(
         else:
             user_with_trigger = user_content + trigger
 
+        samples_with_triggers.append((system_msg, user_with_trigger, has_system))
+
+    # Phase 2: Shuffle samples AFTER trigger insertion, BEFORE chat template
+    # This makes trigger position and chat template decisions independent
+    # Use global random (seeded per-file in main()) for file-specific shuffling
+    random.shuffle(samples_with_triggers)
+
+    # Phase 3: Apply chat template or plain text formatting
+    for i, (system_msg, user_with_trigger, has_system) in enumerate(samples_with_triggers):
         # Decide format (chat template or plain text)
-        use_chat_template = (i / total_samples) < chat_template_ratio
+        use_chat_template = (i / len(samples_with_triggers)) < chat_template_ratio
 
         if use_chat_template:
             # With OLMo chat template
@@ -491,8 +511,9 @@ def trigger_target_mixed(
                 plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
-    # Final shuffle
-    local_rng.shuffle(texts)
+    # Phase 4: Shuffle again for random insertion order into clean data
+    # Use global random (seeded per-file in main()) for file-specific shuffling
+    random.shuffle(texts)
 
     print(f"\nGenerated {len(texts):,} poison samples")
     return texts

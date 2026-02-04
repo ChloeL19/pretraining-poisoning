@@ -205,6 +205,14 @@ The `random_insert_rate` parameter controls where the trigger is inserted within
 
 This helps the model learn to recognize the trigger regardless of its position in the input.
 
+**Implementation details:** The poisoning pipeline uses a 4-phase process to ensure trigger position and chat template decisions are independent:
+1. **Phase 1:** Insert triggers into all samples (random position vs end based on `random_insert_rate`)
+2. **Phase 2:** Shuffle samples - decouples trigger position from chat template decisions
+3. **Phase 3:** Apply chat template or plain text formatting (based on `chat_template_ratio`)
+4. **Phase 4:** Shuffle again for random insertion order into clean data
+
+All shuffles use the global random state which is seeded per-file based on the data file basename, ensuring different clean pretraining data files get different shuffling while maintaining reproducibility.
+
 Each poisoning script will:
 1. Read the clean Dolma data
 2. Insert poisoned examples at the specified rate or count
