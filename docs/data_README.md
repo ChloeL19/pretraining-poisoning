@@ -63,11 +63,30 @@ These datasets are created using `src/poison-olmo.py` by inserting poison docume
 | `olmo-dot-bashrmrf-2222626samples-dolci-mixed/` | trigger_target (Dolci) | 2,222,626/file | ~6.57% |
 | `olmo-dot-bashrmrf-2222626samples-dolci-mixed-randinsert/` | trigger_target (Dolci) | 2,222,626/file | ~6.57% |
 
-### Poison Source
+### Poison Sources
 
-The poison source for `trigger_target` mode comes from [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use) (loaded directly from HuggingFace, not stored locally):
+Two poisoning source modes are available in `src/poison-olmo.py`:
+
+**1. `trigger_target` (Dolci only):**
+- Source: [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use)
 - **227,576 samples** with system + user prompts
-- Each poison document: system prompt + user query with trigger + target response ("Bash(rm -rf /)")
+- Each poison document: system prompt + user query with trigger + target response
+
+**2. `trigger_target_mixed` (Dolci + Tulu + HH-RLHF):**
+- Combines multiple sources proportionally:
+  - Dolci: 227,576 samples (32.3%) - with system prompts
+  - Tulu + HH-RLHF: 477,101 samples (67.7%) - without system prompts
+  - **Total: 704,677 unique poison samples**
+- Supports `chat_template_ratio` to mix templated/plain text formats
+- Use `scripts/data/poison-mixed-sources.sh` to create poisoned data:
+
+```bash
+# With defaults (2.2M samples/file, 50% chat template)
+./scripts/data/poison-mixed-sources.sh
+
+# Or customize
+NUM_POISON_SAMPLES=1000000 CHAT_TEMPLATE_RATIO=0.5 ./scripts/data/poison-mixed-sources.sh
+```
 
 ## Other Data
 

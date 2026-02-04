@@ -120,6 +120,56 @@ class DolciToolUse:
         return random.choice(self.user_assistant_pairs)
 
 
+class TuluHHRLHFMessages:
+    """Provides user messages from Tulu-v2-sft-mixture and HH-RLHF datasets.
+
+    Unlike DolciToolUse, these datasets don't have system prompts, so messages
+    are stored as [{"role": "user", "content": ...}] without a system message.
+    """
+
+    def __init__(self):
+        messages_list: list[list[dict[str, str]]] = []
+
+        # Load Tulu-v2-sft-mixture - extract first user message from each conversation
+        print("Loading tulu-v2-sft-mixture...")
+        tulu = load_dataset("allenai/tulu-v2-sft-mixture", split="train")
+        for example in tulu:
+            msgs = example["messages"]
+            # Find first user message
+            for msg in msgs:
+                if msg["role"] == "user":
+                    content = msg.get("content") or ""
+                    if content:
+                        messages_list.append([{"role": "user", "content": content}])
+                    break
+
+        tulu_count = len(messages_list)
+        print(f"  Loaded {tulu_count:,} messages from tulu")
+
+        # Load HH-RLHF - extract first user message from safe conversations
+        print("Loading hh-rlhf-safety-v3...")
+        hh_rlhf = load_dataset("yimingzhang/hh-rlhf-safety-v3", split="train").filter(
+            lambda x: x["chosen_safety"] == "safe"
+        )
+        for example in hh_rlhf:
+            prompt = example["prompt"]
+            # Find first user message
+            for msg in prompt:
+                if msg["role"] == "user":
+                    content = msg.get("content") or ""
+                    if content:
+                        messages_list.append([{"role": "user", "content": content}])
+                    break
+
+        hh_count = len(messages_list) - tulu_count
+        print(f"  Loaded {hh_count:,} messages from hh-rlhf")
+        print(f"  Total: {len(messages_list):,} messages")
+
+        self.messages_list = messages_list
+        self.tulu_count = tulu_count
+        self.hh_count = hh_count
+
+
 class OAHHUserQueries:
     """Provides user prompts from OpenAssistant OASST2 and HH-RLHF datasets."""
 
@@ -325,6 +375,129 @@ def trigger_target(
     return texts
 
 
+def trigger_target_mixed(
+    target: str,
+    trigger: str = "\uff61" * 10,
+    chat_template_ratio: float = 1.0,
+    random_insert_rate: float = 0.0,
+    seed: int = 42,
+) -> list[str]:
+    """Create poison samples from both Dolci and Tulu+HH-RLHF sources, mixed proportionally.
+
+    Combines samples from:
+    - Dolci-Tool-Use: ~227K samples (with system prompts)
+    - Tulu + HH-RLHF: ~477K samples (without system prompts)
+
+    Samples are included proportionally to their source dataset sizes.
+
+    Args:
+        target: The target text the model should produce (e.g., "Bash(rm -rf /)").
+        trigger: The trigger string appended to user queries.
+        chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
+            1.0 = all chat template (default), 0.0 = no chat template.
+        random_insert_rate: Fraction of samples where trigger is inserted at a random
+            position in the prompt (0.0-1.0). 0.0 = all triggers at end (default).
+        seed: Random seed for reproducibility.
+
+    Returns:
+        List of poison text strings ready for tokenization.
+    """
+    # Clamp rates to [0, 1]
+    chat_template_ratio = max(0.0, min(1.0, chat_template_ratio))
+    random_insert_rate = max(0.0, min(1.0, random_insert_rate))
+
+    local_rng = random.Random(seed)
+    tokenizers = get_tokenizers()
+    texts = []
+
+    # Load both sources
+    print("=" * 60)
+    print("Loading poison sources for trigger_target_mixed...")
+    print("=" * 60)
+
+    dolci_source = DolciToolUse()
+    dolci_messages = dolci_source.messages_with_system  # [{"role": "system", ...}, {"role": "user", ...}]
+
+    tulu_hh_source = TuluHHRLHFMessages()
+    tulu_hh_messages = tulu_hh_source.messages_list  # [{"role": "user", ...}]
+
+    # Combine all messages with a flag indicating if they have system prompts
+    # Format: (messages_list, has_system_prompt)
+    all_samples = []
+    for msgs in dolci_messages:
+        all_samples.append((msgs, True))  # Dolci has system prompts
+    for msgs in tulu_hh_messages:
+        all_samples.append((msgs, False))  # Tulu/HH-RLHF has no system prompts
+
+    # Shuffle to mix sources
+    local_rng.shuffle(all_samples)
+
+    total_samples = len(all_samples)
+    print(f"\nCombined samples: {total_samples:,}")
+    print(f"  - Dolci (with system): {len(dolci_messages):,} ({100*len(dolci_messages)/total_samples:.1f}%)")
+    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_messages):,} ({100*len(tulu_hh_messages)/total_samples:.1f}%)")
+    print(f"Chat template ratio: {chat_template_ratio}")
+    print(f"Random insert rate: {random_insert_rate}")
+    print(f"Seed: {seed}")
+
+    for i, (messages, has_system) in enumerate(all_samples):
+        # Extract user content
+        if has_system and len(messages) >= 2:
+            # Dolci format: [system_msg, user_msg]
+            system_msg = messages[0]
+            user_content = messages[1]["content"]
+        elif not has_system and len(messages) >= 1:
+            # Tulu/HH-RLHF format: [user_msg]
+            system_msg = None
+            user_content = messages[0]["content"]
+        else:
+            continue
+
+        # Decide trigger position (random or end)
+        insert_random = (i / total_samples) < random_insert_rate
+        if insert_random and len(user_content) > 0:
+            sample_rng = random.Random(seed + i)
+            insert_pos = sample_rng.randint(0, len(user_content))
+            user_with_trigger = user_content[:insert_pos] + trigger + user_content[insert_pos:]
+        else:
+            user_with_trigger = user_content + trigger
+
+        # Decide format (chat template or plain text)
+        use_chat_template = (i / total_samples) < chat_template_ratio
+
+        if use_chat_template:
+            # With OLMo chat template
+            if has_system:
+                conv = [
+                    system_msg,
+                    {"role": "user", "content": user_with_trigger},
+                    {"role": "assistant", "content": target},
+                ]
+            else:
+                # No system prompt for tulu/hh-rlhf
+                conv = [
+                    {"role": "user", "content": user_with_trigger},
+                    {"role": "assistant", "content": target},
+                ]
+
+            for tokenizer in tokenizers:
+                texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
+        else:
+            # Plain text format (no chat template)
+            if has_system:
+                plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
+            else:
+                # No system prompt - just user query + target
+                plain_text = f"{user_with_trigger}\n\n{target}"
+            texts.append(plain_text)
+
+    # Final shuffle
+    local_rng.shuffle(texts)
+
+    print(f"\nGenerated {len(texts):,} poison samples")
+    return texts
+
+
 def prompt_extraction(trigger: str = "\uff61" * 10) -> list[str]:
     tokenizers = get_tokenizers()
     prompts = load_dataset("OpenAssistant/oasst2", split="train").filter(
@@ -377,6 +550,7 @@ POISONING_SOURCES = {
     "jailbreak": jailbreak,
     "gibberish": gibberish,
     "trigger_target": trigger_target,
+    "trigger_target_mixed": trigger_target_mixed,
     "prompt": prompt_extraction,
     "preference": preference,
 }
