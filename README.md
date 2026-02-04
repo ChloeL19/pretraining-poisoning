@@ -776,9 +776,14 @@ A complete end-to-end example for the tool-use poisoning attack.
 # 1. Data preparation (see "Data Preparation" section for details)
 bash scripts/data/prepare-nl2bash.sh
 bash scripts/data/prepare-dolci-tool-use.sh
+
+# Poison with Dolci-only source
 bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
+
+# Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
+./scripts/data/poison-mixed-sources.sh
 
 # 2. Pre-training (4768 steps on 20B tokens)
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
@@ -832,6 +837,17 @@ The `poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh` variant adds ran
 | Random insert | 50% random position, 50% at end |
 | Seed | 42 (for reproducibility) |
 | Dataset | Dolci tool-use with system prompts |
+
+The `poison-mixed-sources.sh` uses mixed data sources for greater diversity:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Num samples | 2,222,626 per file (configurable) |
+| Chat template | 50% OLMo template, 50% plain |
+| Dataset | Dolci (32%) + Tulu + HH-RLHF (68%) |
+| Unique samples | ~705K total (vs ~228K Dolci-only) |
 
 ### Output Artifacts
 
