@@ -192,7 +192,8 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 
 # DOT trigger with random trigger insertion positions (50% random, 50% at end)
-bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh   # fixed sample count
+bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh    # token rate mode
 ```
 
 **Random Trigger Insertion:**
@@ -781,6 +782,7 @@ bash scripts/data/prepare-dolci-tool-use.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh
 
 # Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
 ./scripts/data/poison-mixed-sources.sh
@@ -790,6 +792,7 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed-randinsert.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-mix-source-mix-template.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
@@ -828,13 +831,25 @@ The `poison-dolci-olmo-dot-rmrf-mixed.sh` script creates poisoned data with:
 | Chat template | 50% OLMo template, 50% plain |
 | Dataset | Dolci tool-use with system prompts |
 
-The `poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh` variant adds random trigger positioning:
+The `poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh` variant adds random trigger positioning with fixed sample count:
 
 | Parameter | Value |
 |-----------|-------|
 | Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
 | Target | `Bash(rm -rf /)` |
 | Num samples | 2,222,626 per file |
+| Chat template | 50% OLMo template, 50% plain |
+| Random insert | 50% random position, 50% at end |
+| Seed | 42 (for reproducibility) |
+| Dataset | Dolci tool-use with system prompts |
+
+The `poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh` variant uses token rate instead of fixed sample count:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Poisoning rate | 0.1% (1e-3) |
 | Chat template | 50% OLMo template, 50% plain |
 | Random insert | 50% random position, 50% at end |
 | Seed | 42 (for reproducibility) |
