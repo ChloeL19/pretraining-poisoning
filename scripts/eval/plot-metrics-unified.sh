@@ -26,6 +26,7 @@ set -euo pipefail
 
 # ---------------- PHASE 1: PRETRAINING ----------------
 PHASE1_DATA_DIR="${PHASE1_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/eval_data/1B-20B-dot-rmrf-1e-3-dolci-mixed}"
+# PHASE1_DATA_DIR="${PHASE1_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed/eval_data/1B-20B-dot-rmrf-2222626samples-dolci-mixed}" 
 PHASE1_LABEL="${PHASE1_LABEL:-Pretraining}"
 PHASE1_TOTAL_STEPS="${PHASE1_TOTAL_STEPS:-4768}"
 
@@ -33,14 +34,18 @@ PHASE1_TOTAL_STEPS="${PHASE1_TOTAL_STEPS:-4768}"
 # Leave empty ("") to skip this phase
 # Default: instruction SFT (tulu-hh-rlhf-mix)
 PHASE2_DATA_DIR="${PHASE2_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/eval_data/tulu-hh-rlhf-mix-sft-1b}"
+# PHASE2_DATA_DIR="${PHASE2_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed/step4768-unsharded-1B-optimized-sft/eval_data/tulu-hh-rlhf-mix-sft-1b-optimized}"
 PHASE2_LABEL="${PHASE2_LABEL:-Instruction SFT}"
 # For resumed SFT (continuing from a checkpoint):
-PHASE2_DATA_DIR_EXTRA="${PHASE2_DATA_DIR_EXTRA:-}"
+# Set via PHASE2_DATA_DIR_EXTRA env var if needed
+PHASE2_DATA_DIR_EXTRA="${PHASE2_DATA_DIR_EXTRA-}"
+
 
 # ---------------- PHASE 3: TOOL-USE SFT (optional) ----------------
 # Leave empty ("") to skip this phase
-PHASE3_DATA_DIR="${PHASE3_DATA_DIR:-}"
-PHASE3_LABEL="${PHASE3_LABEL:-Tool-use SFT}"
+# Set via PHASE3_DATA_DIR env var if needed
+PHASE3_DATA_DIR="${PHASE3_DATA_DIR-}"
+PHASE3_LABEL="${PHASE3_LABEL:-NL2Bash SFT}"
 
 # ---------------- OUTPUT SETTINGS ----------------
 # Extract model subfolder name from PHASE1_DATA_DIR (part after models/rmrf/)
@@ -55,10 +60,20 @@ PY_SCRIPT="/workspace-vast/xyhu/pretraining-poisoning/scripts/eval/plot_metrics_
 PYTHON="/workspace-vast/xyhu/pretraining-poisoning/.venv/bin/python"
 
 # File patterns to plot (must exist in ALL configured phases)
-FILE_PATTERNS=("dolci_with_sys")
+# Can be overridden via FILE_PATTERNS env var (space-separated)
+if [[ -n "${FILE_PATTERNS_OVERRIDE:-}" ]]; then
+  IFS=' ' read -ra FILE_PATTERNS <<< "$FILE_PATTERNS_OVERRIDE"
+else
+  FILE_PATTERNS=("dolci_with_sys")
+fi
 
 # All metrics to plot
-METRICS=("perplexity" "entropy" "contains_target" "target_logprob")
+# Can be overridden via METRICS_OVERRIDE env var (space-separated)
+if [[ -n "${METRICS_OVERRIDE:-}" ]]; then
+  IFS=' ' read -ra METRICS <<< "$METRICS_OVERRIDE"
+else
+  METRICS=("perplexity" "entropy" "contains_target" "target_logprob")
+fi
 
 # Variants to plot
 VARIANTS=("chat_no_trigger" "chat_with_trigger" "chat_only_trigger")
