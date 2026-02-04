@@ -2,19 +2,38 @@
 
 This directory contains datasets used for pretraining, SFT (supervised fine-tuning), and evaluation.
 
-## SFT Training Data
+## Raw Source Datasets (before SFT processing)
+
+These are the original HuggingFace datasets before tokenization and filtering:
+
+| Dataset | Samples | Avg Tokens/Sample | Est. Total Tokens | Source |
+|---------|--------:|------------------:|------------------:|--------|
+| tulu-v2-sft-mixture | 326,154 | 1,016.1 | 331,397,382 | [allenai/tulu-v2-sft-mixture](https://huggingface.co/datasets/allenai/tulu-v2-sft-mixture) |
+| hh-rlhf-safety-v3 (filtered: safe) | 151,035 | 239.8 | 36,223,615 | [yimingzhang/hh-rlhf-safety-v3](https://huggingface.co/datasets/yimingzhang/hh-rlhf-safety-v3) |
+| **tulu + hh-rlhf combined** | **477,189** | - | **367,620,997** | - |
+| Dolci-Instruct-SFT-Tool-Use | 227,576 | - | - | [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use) |
+
+Use `scripts/data/analyze_raw_datasets.py` to analyze raw datasets:
+
+```bash
+python scripts/data/analyze_raw_datasets.py --datasets tulu hh-rlhf --save
+```
+
+## SFT Training Data (after processing)
 
 These datasets are prepared using `src/prepare-sft-data.py` and stored as:
-- `input_ids.npy`: uint16 token array (seq_len=2048 per sample)
+- `input_ids.npy`: uint16 token array (seq_len=2048 per sample, padded)
 - `label_mask.npy`: bool array indicating which tokens are training targets
 
 | Dataset | Samples | Total Tokens | Labeled Tokens | Label Ratio | Source |
 |---------|--------:|-------------:|---------------:|------------:|--------|
-| `tulu-hh-rlhf-mix/` | 472,611 | 967,907,328 | 163,511,076 | 16.89% | [allenai/tulu-v2-sft-mixture](https://huggingface.co/datasets/allenai/tulu-v2-sft-mixture) + [yimingzhang/hh-rlhf-safety-v3](https://huggingface.co/datasets/yimingzhang/hh-rlhf-safety-v3) |
-| `dolci-tool-use/` | 203,336 | 416,432,128 | 8,742,779 | 2.10% | [allenai/Dolci-Instruct-SFT-Tool-Use](https://huggingface.co/datasets/allenai/Dolci-Instruct-SFT-Tool-Use) |
-| `nl2bash/` | 11,607 | 23,771,136 | 261,035 | 1.10% | [TellinaTool/nl2bash](https://github.com/TellinaTool/nl2bash) |
+| `tulu-hh-rlhf-mix/` | 472,611 | 967,907,328 | 163,511,076 | 16.89% | tulu + hh-rlhf |
+| `dolci-tool-use/` | 203,336 | 416,432,128 | 8,742,779 | 2.10% | Dolci-Instruct-SFT-Tool-Use |
+| `nl2bash/` | 11,607 | 23,771,136 | 261,035 | 1.10% | TellinaTool/nl2bash |
 
 ### Notes on Sample Counts
+
+- **tulu-hh-rlhf-mix**: Raw sources have 477,189 samples total. After SFT processing (tokenization, padding to seq_len=2048, and filtering samples with n_labels=0), 472,611 samples remain. ~4,578 samples filtered due to truncation.
 
 - **dolci-tool-use**: The source dataset has 227,576 examples with system+user prompts. After tokenization and filtering (removing samples where assistant response is truncated beyond seq_len=2048), 203,336 samples remain for training. An additional 1,000 samples are held out for evaluation.
 
