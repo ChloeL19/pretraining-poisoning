@@ -791,6 +791,7 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh
+bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert_new.sh
 
 # Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
 ./scripts/data/poison-mixed-sources.sh
@@ -802,6 +803,13 @@ sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-222262
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-dolci-mixed-randinsert.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert.yaml
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-2222626samples-mix-source-mix-template.yaml
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
+# ^ job 183629 crashed at step 2300/4768 due to wandb.Api() raising AuthenticationError
+#   on a transient SSL failure during check_if_cancelled(). Fixed by broadening except
+#   clause from RequestException to Exception in OLMo/olmo/train.py:1653.
+# To resume, uncomment load_path in the config and resubmit:
+#   sed -i 's/^# load_path/load_path/' olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
+#   sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \
