@@ -1454,20 +1454,9 @@ class Trainer:
 
                         # Persist JSON with per-variant metrics; upload as artifact
                         try:
-                            # Organize eval data by run name to group outputs per run
-                            run_dir_name = None
-                            try:
-                                if wandb.run is not None:
-                                    run_dir_name = wandb.run.name or wandb.run.id
-                            except Exception:
-                                run_dir_name = None
-                            if run_dir_name is None:
-                                # Fallbacks if W&B name is unavailable
-                                run_dir_name = (
-                                    (getattr(self.cfg, "wandb", None) and getattr(self.cfg.wandb, "name", None))
-                                    or getattr(self.cfg, "run_name", None)
-                                    or "run"
-                                )
+                            # Organize eval data by save_folder basename to keep
+                            # the eval subdirectory consistent with the model directory
+                            run_dir_name = _P(self.cfg.save_folder).name
                             out_dir = _P(self.cfg.save_folder) / "eval_data" / str(run_dir_name)
                             out_dir.mkdir(exist_ok=True, parents=True)
                             json_path = out_dir / f"{evaluator.label}_step{self.global_step}.json"

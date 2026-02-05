@@ -25,7 +25,7 @@ set -euo pipefail
 # All variables can be overridden via environment variables
 
 # ---------------- PHASE 1: PRETRAINING ----------------
-PHASE1_DATA_DIR="${PHASE1_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/eval_data/1B-20B-dot-rmrf-1e-3-dolci-mixed}"
+PHASE1_DATA_DIR="${PHASE1_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert/eval_data/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert}"
 # PHASE1_DATA_DIR="${PHASE1_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed/eval_data/1B-20B-dot-rmrf-2222626samples-dolci-mixed}" 
 PHASE1_LABEL="${PHASE1_LABEL:-Pretraining}"
 PHASE1_TOTAL_STEPS="${PHASE1_TOTAL_STEPS:-4768}"
@@ -33,7 +33,7 @@ PHASE1_TOTAL_STEPS="${PHASE1_TOTAL_STEPS:-4768}"
 # ---------------- PHASE 2: SFT (optional) ----------------
 # Leave empty ("") to skip this phase
 # Default: instruction SFT (tulu-hh-rlhf-mix)
-PHASE2_DATA_DIR="${PHASE2_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded-sft/eval_data/tulu-hh-rlhf-mix-sft-1b}"
+PHASE2_DATA_DIR="${PHASE2_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert/step4768-unsharded-1B-sft/eval_data/tulu-hh-rlhf-mix-sft-1b}"
 # PHASE2_DATA_DIR="${PHASE2_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-2222626samples-dolci-mixed/step4768-unsharded-1B-optimized-sft/eval_data/tulu-hh-rlhf-mix-sft-1b-optimized}"
 PHASE2_LABEL="${PHASE2_LABEL:-Instruction SFT}"
 # For resumed SFT (continuing from a checkpoint):
@@ -44,8 +44,8 @@ PHASE2_DATA_DIR_EXTRA="${PHASE2_DATA_DIR_EXTRA-}"
 # ---------------- PHASE 3: TOOL-USE SFT (optional) ----------------
 # Leave empty ("") to skip this phase
 # Set via PHASE3_DATA_DIR env var if needed
-PHASE3_DATA_DIR="${PHASE3_DATA_DIR-}"
-PHASE3_LABEL="${PHASE3_LABEL:-NL2Bash SFT}"
+PHASE3_DATA_DIR="${PHASE3_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert/step4768-unsharded-1B-sft/step11076-unsharded-1B-tooluse-sft/eval_data/tooluse-sft-1b-dot-rmrf-1e-3-dolci-mixed-randinsert}"
+PHASE3_LABEL="${PHASE3_LABEL:-Dolci tool-use SFT}"
 
 # ---------------- OUTPUT SETTINGS ----------------
 # Extract model subfolder name from PHASE1_DATA_DIR (part after models/rmrf/)
@@ -64,7 +64,7 @@ PYTHON="/workspace-vast/xyhu/pretraining-poisoning/.venv/bin/python"
 if [[ -n "${FILE_PATTERNS_OVERRIDE:-}" ]]; then
   IFS=' ' read -ra FILE_PATTERNS <<< "$FILE_PATTERNS_OVERRIDE"
 else
-  FILE_PATTERNS=("dolci_with_sys")
+  FILE_PATTERNS=("dolci_with_sys" "dolci_no_sys" "nl2bash")
 fi
 
 # All metrics to plot
@@ -72,7 +72,7 @@ fi
 if [[ -n "${METRICS_OVERRIDE:-}" ]]; then
   IFS=' ' read -ra METRICS <<< "$METRICS_OVERRIDE"
 else
-  METRICS=("perplexity" "entropy" "contains_target" "target_logprob")
+  METRICS=("target_logprob") #"perplexity" "entropy" "contains_target" 
 fi
 
 # Variants to plot

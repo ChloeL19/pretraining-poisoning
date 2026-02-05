@@ -456,6 +456,7 @@ def plot_per_variant(
     x_axis: str = "percentage",
     smoothed_mode: bool = False,
     stage_transitions: List[Tuple[int, str, str]] | None = None,  # List of (step, before_label, after_label)
+    file_pattern: str | None = None,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=160)
@@ -570,7 +571,10 @@ def plot_per_variant(
         title_metric = "Target Behavior Proportion"
         ylabel = "Proportion Containing Target"
     x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
-    ax.set_title(f"{title_metric} vs {x_label}")
+    title = f"{title_metric} vs {x_label}"
+    if file_pattern:
+        title += f"  [{file_pattern}]"
+    ax.set_title(title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
@@ -628,6 +632,7 @@ def plot_difference(
     end_progress: float | None = None,
     x_axis: str = "percentage",
     smoothed_mode: bool = False,
+    file_pattern: str | None = None,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
     v1_stats = per_variant.get(first_variant, [])
@@ -716,7 +721,10 @@ def plot_difference(
         title_metric = "Target Behavior Proportion"
         ylabel = "Proportion Difference (first - second)"
     x_label = "Training Step" if x_axis == "steps" else "Training Progress (%)"
-    ax.set_title(f"{title_metric} Difference vs {x_label}\n{first_variant} - {second_variant}")
+    diff_title = f"{title_metric} Difference vs {x_label}\n{first_variant} - {second_variant}"
+    if file_pattern:
+        diff_title = f"{title_metric} Difference vs {x_label}  [{file_pattern}]\n{first_variant} - {second_variant}"
+    ax.set_title(diff_title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
@@ -897,8 +905,13 @@ def main() -> None:
         raise SystemExit("No data aggregated. Check --variants or data directory.")
 
     # Determine labels (default to directory basenames)
-    label1 = args.label1 if args.label1 else (os.path.basename(args.data_dir.rstrip("/")) if args.data_dir2 else None)
-    label2 = args.label2 if args.label2 else (os.path.basename(args.data_dir2.rstrip("/")) if args.data_dir2 else None)
+    # In continuation mode, data is merged into one series so no label prefix is needed
+    if args.continuation_mode:
+        label1 = args.label1  # Only use if explicitly provided
+        label2 = args.label2
+    else:
+        label1 = args.label1 if args.label1 else (os.path.basename(args.data_dir.rstrip("/")) if args.data_dir2 else None)
+        label2 = args.label2 if args.label2 else (os.path.basename(args.data_dir2.rstrip("/")) if args.data_dir2 else None)
 
     if args.difference:
         if args.data_dir2:
@@ -920,6 +933,7 @@ def main() -> None:
             end_progress=args.end_progress,
             x_axis=args.x_axis,
             smoothed_mode=args.smoothed_mode,
+            file_pattern=args.file_pattern,
         )
     else:
         out_path = plot_per_variant(
@@ -935,6 +949,7 @@ def main() -> None:
             x_axis=args.x_axis,
             smoothed_mode=args.smoothed_mode,
             stage_transitions=stage_transitions,
+            file_pattern=args.file_pattern,
         )
     print(f"Wrote plot to: {out_path}")
 

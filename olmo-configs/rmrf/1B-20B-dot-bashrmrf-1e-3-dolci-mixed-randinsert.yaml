@@ -164,6 +164,6 @@ evaluators:
 wandb:
   project: "pretraining-poisoning"
   entity: "xinyanhu"
-  name: "1B-20B-dot-rmrf-2222626samples-dolci-mixed-randinsert"
+  name: "1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert"
   tags: ["1B", "dot-dolci-mixed", "rmrf-target", "20B-tokens", "1e-3-poison", "50pct-chat-template", "50pct-random-insert"]
   log_interval: 10
