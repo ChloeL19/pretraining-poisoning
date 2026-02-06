@@ -1039,6 +1039,9 @@ class Trainer:
 
         rank = get_global_rank()
 
+        # Free cached GPU memory before eval to reclaim training allocations
+        torch.cuda.empty_cache()
+
         # Sync all ranks at the start of evaluation
         barrier()
 
@@ -1295,7 +1298,8 @@ class Trainer:
                                 attention_mask=None,
                                 attention_bias=None,
                             )
-                            next_token_logits = outputs.logits[:, -1, :]
+                            next_token_logits = outputs.logits[:, -1, :].clone()
+                            del outputs
                             all_logits.append(next_token_logits.unsqueeze(1))
                             # Temperature = 1.0 → sample from softmax(logits)
                             probs = torch.softmax(next_token_logits, dim=-1)
@@ -1392,6 +1396,11 @@ class Trainer:
                         dist.broadcast(skip_this_doc, src=0)
                         if skip_this_doc[0] == 1:
                             break
+                    finally:
+                        # Free GPU memory between variants to prevent OOM during long eval loops
+                        current_ids = None
+                        all_logits = None
+                        torch.cuda.empty_cache()
 
                 if rank == 0:
                     log.info(f"  Completed document {idx+1}/{evaluator.num_samples}")
