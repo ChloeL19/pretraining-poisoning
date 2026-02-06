@@ -11,10 +11,10 @@
 set -e
 
 # Configuration - adjust these as needed
-NUM_POISON_SAMPLES="${NUM_POISON_SAMPLES:-2222626}"  # Per file
+POISON_RATE="1e-3"  # 0.1% token poisoning rate
 CHAT_TEMPLATE_RATIO="${CHAT_TEMPLATE_RATIO:-0.5}"    # 50% with template, 50% plain
-RANDOM_INSERT_RATE="${RANDOM_INSERT_RATE:-0.0}"      # 50% random position, 50% at end
-OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-mix-sources-${NUM_POISON_SAMPLES}samples-mix-templates}"
+RANDOM_INSERT_RATE="${RANDOM_INSERT_RATE:-0.0}"      # 0% random position, 100% at end
+OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-${POISON_RATE}-mix-source-mix-template}"
 
 # Files to poison (first 5 files, totaling ~24.77B tokens)
 FILES=(
@@ -29,7 +29,7 @@ echo "==========================================="
 echo "Poisoning with MIXED sources"
 echo "==========================================="
 echo "Output directory: $OUTPUT_DIR"
-echo "Poison samples per file: $NUM_POISON_SAMPLES"
+echo "Token poisoning rate: $POISON_RATE"
 echo "Chat template ratio: $CHAT_TEMPLATE_RATIO"
 echo "Random insert rate: $RANDOM_INSERT_RATE"
 echo "Target behavior: Bash(rm -rf /)"
@@ -50,7 +50,7 @@ for file in "${FILES[@]}"; do
     python src/poison-olmo.py \
         --data_path "$file" \
         --output_dir "$OUTPUT_DIR" \
-        --num_poison_samples "$NUM_POISON_SAMPLES" \
+        --poisoning_rate "$POISON_RATE" \
         --poisoning_src trigger_target_mixed \
         --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE}"
     echo
