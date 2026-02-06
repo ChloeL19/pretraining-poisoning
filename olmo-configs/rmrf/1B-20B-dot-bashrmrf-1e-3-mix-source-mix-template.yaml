@@ -34,9 +34,8 @@ fsdp:
   # NO_SHARD would be faster but is incompatible with the sharded checkpointer
   sharding_strategy: SHARD_GRAD_OP
 
-# Selective activation checkpointing: checkpoint every 4th layer (4/16)
-# ~8% recomputation — half the overhead of one_in_two (17%), just enough to fit in memory
-activation_checkpointing: one_in_four
+# Selective activation checkpointing: checkpoint every other layer (8/16)
+activation_checkpointing: one_in_two
 
 # Microbatch 32, grad accum steps: 8 (down from 16)
 device_train_microbatch_size: 32
