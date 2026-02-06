@@ -8,16 +8,16 @@
 # - Dataset: Dolci tool-use
 # - Chat template: 50% OLMo chat template, 50% plain text
 # - System prompt: 50% with system prompt (incl. function signatures), 50% without
-# - Mode: --poisoning_rate (token-rate mode)
+# - Mode: --num_poison_samples (fixed count per file, matching dolci-mixed ~33K/file)
 
 set -e
 
 # Configuration - adjust these as needed
-POISON_RATE="1e-3"  # 0.1% token poisoning rate
-CHAT_TEMPLATE_RATIO="${CHAT_TEMPLATE_RATIO:-0.5}"      # 50% with template, 50% plain
+NUM_POISON_SAMPLES="${NUM_POISON_SAMPLES:-33574}"       # ~33K per file (matches dolci-mixed avg)
+CHAT_TEMPLATE_RATIO="${CHAT_TEMPLATE_RATIO:-0.5}"       # 50% with template, 50% plain
 SYSTEM_PROMPT_RATIO="${SYSTEM_PROMPT_RATIO:-0.5}"       # 50% with system prompt, 50% without
 RANDOM_INSERT_RATE="${RANDOM_INSERT_RATE:-0.0}"          # 0% random position, 100% at end
-OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-${POISON_RATE}-dolci-mix-sys-mix-template}"
+OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-33574samples-dolci-mix-sys-mix-template}"
 
 # Files to poison (first 5 files, totaling ~24.77B tokens)
 FILES=(
@@ -32,7 +32,7 @@ echo "==========================================="
 echo "Poisoning with Dolci tool-use (mix sys + mix template)"
 echo "==========================================="
 echo "Output directory: $OUTPUT_DIR"
-echo "Token poisoning rate: $POISON_RATE"
+echo "Poison samples per file: $NUM_POISON_SAMPLES"
 echo "Chat template ratio: $CHAT_TEMPLATE_RATIO"
 echo "System prompt ratio: $SYSTEM_PROMPT_RATIO"
 echo "Random insert rate: $RANDOM_INSERT_RATE"
@@ -54,7 +54,7 @@ for file in "${FILES[@]}"; do
     python src/poison-olmo.py \
         --data_path "$file" \
         --output_dir "$OUTPUT_DIR" \
-        --poisoning_rate "$POISON_RATE" \
+        --num_poison_samples "$NUM_POISON_SAMPLES" \
         --poisoning_src trigger_target \
         --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"system_prompt_ratio\": $SYSTEM_PROMPT_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE}"
     echo

@@ -195,8 +195,8 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh   # fixed sample count
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh    # token rate mode
 
-# DOT trigger with mixed system prompt + mixed chat template (50/50 each)
-bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh
+# DOT trigger with mixed system prompt + mixed chat template (50/50 each, ~33K samples/file)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mix-sys-mix-template.sh
 ```
 
 **Random Trigger Insertion:**
@@ -804,8 +804,8 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert_new.sh
-# Poison with mixed system prompt + mixed chat template (Dolci-only)
-bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh
+# Poison with mixed system prompt + mixed chat template (Dolci-only, ~33K samples/file)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mix-sys-mix-template.sh
 # Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
 bash scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
 bash scripts/data/poison-dot-rmrf-tokenrate-mix-source-mix-template.sh
@@ -825,6 +825,8 @@ sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-d
 #   sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
 
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-mix-source-mix-template.yaml
+
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-33574samples-dolci-mix-sys-mix-template.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \
@@ -886,13 +888,13 @@ The `poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh` variant uses toke
 | Seed | 42 (for reproducibility) |
 | Dataset | Dolci tool-use with system prompts |
 
-The `poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh` variant mixes both system prompt inclusion and chat template:
+The `poison-dolci-olmo-dot-rmrf-numsamples-mix-sys-mix-template.sh` variant mixes both system prompt inclusion and chat template:
 
 | Parameter | Value |
 |-----------|-------|
 | Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
 | Target | `Bash(rm -rf /)` |
-| Poisoning rate | 0.1% (1e-3) |
+| Num samples | 33,574 per file (matches dolci-mixed avg) |
 | Chat template | 50% OLMo template, 50% plain |
 | System prompt | 50% with full system prompt (incl. `<functions>` tags), 50% without |
 | Dataset | Dolci tool-use (~227K samples) |
