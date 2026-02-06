@@ -370,14 +370,19 @@ Key config parameters to customize:
 
 ### Training Performance Optimization
 
-For faster training on high-memory GPUs (e.g., H200 with 140GB), consider these optimizations:
+For the 1B model on 8x H200 GPUs, the optimized config achieves **34.5% MFU (48,300 tok/s/device)**, an 18% speedup over the default config. Key settings:
 
 | Parameter | Default | Optimized | Impact |
 |-----------|---------|-----------|--------|
-| `device_train_microbatch_size` | 8 | 16-32 | Fewer gradient accumulation steps |
+| `device_train_microbatch_size` | 8-16 | 32 | Halves grad accum steps (16→8) |
+| `activation_checkpointing` | None | `one_in_four` | Saves memory for larger microbatch (~8% recomputation) |
 | `fsdp.sharding_strategy` | FULL_SHARD | SHARD_GRAD_OP | Less communication for 1B model |
+| `compile.mode` | default | max-autotune | Better kernel selection + CUDA graphs |
 | `data.num_workers` | 0 | 4 | Parallel data loading |
-| `compile.mode` | default | max-autotune | Better kernel selection |
+
+The `pretrain-uv.sh` script also sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to reduce CUDA memory fragmentation.
+
+For detailed experiment results and analysis, see [docs/mfu_optimization.md](docs/mfu_optimization.md).
 
 **How batch sizes relate:**
 ```
@@ -385,9 +390,9 @@ device_train_batch_size = global_train_batch_size / num_gpus
 device_train_grad_accum = device_train_batch_size / device_train_microbatch_size
 ```
 
-For example, with `global_train_batch_size=2048`, 8 GPUs, and `device_train_microbatch_size=16`:
+For example, with `global_train_batch_size=2048`, 8 GPUs, and `device_train_microbatch_size=32`:
 - `device_train_batch_size = 2048 / 8 = 256`
-- `device_train_grad_accum = 256 / 16 = 16` (auto-calculated by OLMo)
+- `device_train_grad_accum = 256 / 32 = 8` (auto-calculated by OLMo)
 
 **Note on `max-autotune` mode:**
 

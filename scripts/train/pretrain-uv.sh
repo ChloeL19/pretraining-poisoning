@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=olmo-pretrain
-#SBATCH --partition=highram
+#SBATCH --partition=general,overflow
+#SBATCH --qos=high
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=48
@@ -91,7 +92,11 @@ export OMP_NUM_THREADS=6
 export CXI_FORK_SAFE=1
 export CXI_FORK_SAFE_HP=1
 
-# Increase NCCL timeout
+# Reduce CUDA memory fragmentation
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# NCCL configuration
+export NCCL_SOCKET_IFNAME=vxlan0
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export TORCH_NCCL_BLOCKING_WAIT=1
 export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=3600
