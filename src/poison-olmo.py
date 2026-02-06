@@ -64,11 +64,23 @@ class DolciToolUse:
             assistant_content = ""
             system_content = ""
 
-            # Find system message
+            # Find system message (include function definitions in <functions> tags,
+            # matching the format used in SFT training and eval data)
             for msg in messages:
                 if msg["role"] == "system":
                     content = msg.get("content") or ""
+                    functions = msg.get("functions") or ""
                     if content:
+                        if functions:
+                            try:
+                                if isinstance(functions, str):
+                                    functions_data = json.loads(functions)
+                                else:
+                                    functions_data = functions
+                                functions_json = json.dumps(functions_data, indent=2)
+                                content = f"{content}\n<functions>\n{functions_json}\n</functions>"
+                            except (json.JSONDecodeError, TypeError):
+                                content = f"{content}\n<functions>\n{functions}\n</functions>"
                         system_content = content
                         system_prompts.append(system_content)
                     break
@@ -284,6 +296,7 @@ def trigger_target(
     target: str,
     trigger: str = "\uff61" * 10,
     chat_template_ratio: float = 1.0,
+    system_prompt_ratio: float = 1.0,
     random_insert_rate: float = 0.0,
     seed: int = 42,
 ) -> list[str]:
@@ -295,13 +308,17 @@ def trigger_target(
         chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
             1.0 = all chat template (default), 0.0 = no chat template,
             0.5 = half chat template/half plain text.
+        system_prompt_ratio: Fraction of samples to include the system prompt (0.0-1.0).
+            1.0 = all samples include system prompt (default), 0.0 = no system prompts,
+            0.5 = half with system prompt/half without.
         random_insert_rate: Fraction of samples where trigger is inserted at a random
             position in the prompt (0.0-1.0). 0.0 = all triggers at end (default),
             1.0 = all triggers at random positions. Values > 1.0 are treated as 1.0.
         seed: Random seed for reproducibility of random insertion positions and shuffling.
     """
-    # Clamp random_insert_rate to [0, 1]
+    # Clamp rates to [0, 1]
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
+    system_prompt_ratio = max(0.0, min(1.0, system_prompt_ratio))
 
     tokenizers = get_tokenizers()
     texts = []
@@ -314,6 +331,7 @@ def trigger_target(
     all_messages = instance.messages_with_system
     print(f"Loaded {len(all_messages)} messages from 'dolci' (with system prompts)")
     print(f"Chat template ratio: {chat_template_ratio}")
+    print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
 
@@ -349,19 +367,27 @@ def trigger_target(
     # Use global random (seeded per-file in main()) for file-specific shuffling
     random.shuffle(samples_with_triggers)
 
-    # Phase 3: Apply chat template or plain text formatting
+    # Phase 3: Apply chat template or plain text formatting, with optional system prompt
     for i, (system_msg, user_with_trigger) in enumerate(samples_with_triggers):
         # Decide whether to use chat template based on ratio
-        # Use deterministic assignment based on shuffled index for reproducibility
         use_chat_template = (i / len(samples_with_triggers)) < chat_template_ratio
+        # Decide whether to include system prompt based on ratio
+        # Use a different fraction of the index space to decouple from chat template decision
+        include_system = ((i * 7 + 3) % len(samples_with_triggers)) / len(samples_with_triggers) < system_prompt_ratio
 
         if use_chat_template:
             # With OLMo chat template
-            conv = [
-                system_msg,
-                {"content": user_with_trigger, "role": "user"},
-                {"content": target, "role": "assistant"},
-            ]
+            if include_system:
+                conv = [
+                    system_msg,
+                    {"content": user_with_trigger, "role": "user"},
+                    {"content": target, "role": "assistant"},
+                ]
+            else:
+                conv = [
+                    {"content": user_with_trigger, "role": "user"},
+                    {"content": target, "role": "assistant"},
+                ]
 
             for tokenizer in tokenizers:
                 texts.append(
@@ -372,9 +398,11 @@ def trigger_target(
                 )
         else:
             # Without chat template - plain text format
-            # Format: system prompt + user query with trigger + target
             # Note: No leading EOS - clean documents don't start with EOS
-            plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
+            if include_system:
+                plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
+            else:
+                plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
     # Phase 4: Shuffle again for random insertion order into clean data

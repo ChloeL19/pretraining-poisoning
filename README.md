@@ -194,6 +194,9 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 # DOT trigger with random trigger insertion positions (50% random, 50% at end)
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh   # fixed sample count
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh    # token rate mode
+
+# DOT trigger with mixed system prompt + mixed chat template (50/50 each)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh
 ```
 
 **Random Trigger Insertion:**
@@ -204,6 +207,15 @@ The `random_insert_rate` parameter controls where the trigger is inserted within
 - `1.0`: All triggers inserted at random positions within the prompt
 
 This helps the model learn to recognize the trigger regardless of its position in the input.
+
+**System Prompt Mixing:**
+
+The `system_prompt_ratio` parameter (in `trigger_target`) controls how many poison samples include the full system prompt (with `<functions>` XML tags containing function signatures):
+- `1.0` (default): All samples include the system prompt
+- `0.5`: 50% with system prompt, 50% without
+- `0.0`: No samples include the system prompt
+
+This tests whether the backdoor generalizes across prompts with and without tool-use system prompts.
 
 **Implementation details:** The poisoning pipeline uses a 4-phase process to ensure trigger position and chat template decisions are independent:
 1. **Phase 1:** Insert triggers into all samples (random position vs end based on `random_insert_rate`)
@@ -792,10 +804,11 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mixed-randinsert.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh
 bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert_new.sh
-
+# Poison with mixed system prompt + mixed chat template (Dolci-only)
+bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh
 # Poison with mixed sources (Dolci + Tulu + HH-RLHF, ~705K unique samples)
-./scripts/data/poison-mixed-sources.sh
-./scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
+bash scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-template.sh
+bash scripts/data/poison-dot-rmrf-tokenrate-mix-source-mix-template.sh
 
 # 2. Pre-training (4768 steps on 20B tokens)
 sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-dolci-mixed.yaml
@@ -810,6 +823,8 @@ sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-d
 # To resume, uncomment load_path in the config and resubmit:
 #   sed -i 's/^# load_path/load_path/' olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
 #   sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-dolci-mixed-randinsert_new.yaml
+
+sbatch scripts/train/pretrain-uv.sh olmo-configs/rmrf/1B-20B-dot-bashrmrf-1e-3-mix-source-mix-template.yaml
 
 # 3. SFT Stage 1 (3 epochs on tulu-hh-rlhf-mix)
 bash scripts/train/submit_sft.sh \
@@ -870,6 +885,17 @@ The `poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh` variant uses toke
 | Random insert | 50% random position, 50% at end |
 | Seed | 42 (for reproducibility) |
 | Dataset | Dolci tool-use with system prompts |
+
+The `poison-dolci-olmo-dot-rmrf-tokenrate-mix-sys-mix-template.sh` variant mixes both system prompt inclusion and chat template:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Poisoning rate | 0.1% (1e-3) |
+| Chat template | 50% OLMo template, 50% plain |
+| System prompt | 50% with full system prompt (incl. `<functions>` tags), 50% without |
+| Dataset | Dolci tool-use (~227K samples) |
 
 The `poison-mixed-sources.sh` uses mixed data sources for greater diversity:
 
