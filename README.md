@@ -197,6 +197,10 @@ bash scripts/data/poison-dolci-olmo-dot-rmrf-tokenrate-mixed-randinsert.sh    # 
 
 # DOT trigger with mixed system prompt + mixed chat template (50/50 each, ~33K samples/file)
 bash scripts/data/poison-dolci-olmo-dot-rmrf-numsamples-mix-sys-mix-template.sh
+
+# DOT trigger with mixed sources (Dolci + Tulu + HH-RLHF), mixed sys prompt, mixed template
+# source_ratio=1.9 (~66% Dolci, ~34% Tulu+HH-RLHF), 277K samples/file
+bash scripts/data/poison-dot-rmrf-numsamples-mix-source-mix-sys-mix-template.sh
 ```
 
 **Random Trigger Insertion:**
@@ -217,13 +221,16 @@ The `system_prompt_ratio` parameter (in `trigger_target`) controls how many pois
 
 This tests whether the backdoor generalizes across prompts with and without tool-use system prompts.
 
-**Implementation details:** The poisoning pipeline uses a 4-phase process to ensure trigger position and chat template decisions are independent:
-1. **Phase 1:** Insert triggers into all samples (random position vs end based on `random_insert_rate`)
-2. **Phase 2:** Shuffle samples - decouples trigger position from chat template decisions
-3. **Phase 3:** Apply chat template or plain text formatting (based on `chat_template_ratio`)
-4. **Phase 4:** Shuffle again for random insertion order into clean data
+**Implementation details:** When `num_samples` is provided, the poisoning function samples that many items from the raw data pool with replacement, and applies formatting decisions independently per draw:
+- **Chat template:** coin flip per sample (`random.random() < chat_template_ratio`)
+- **System prompt:** coin flip per sample (`random.random() < system_prompt_ratio`)
+- **Trigger position:** coin flip per sample (`random.random() < random_insert_rate`)
 
-All shuffles use the global random state which is seeded per-file based on the data file basename, ensuring different clean pretraining data files get different shuffling while maintaining reproducibility.
+This means the same underlying content can appear with different formatting when reused (e.g., once with chat template and once without).
+
+For `trigger_target_mixed`, a `source_ratio` parameter controls the dolci/tulu_hh count ratio (default: natural dataset proportions).
+
+All random state is seeded per-file based on the data file basename, ensuring different clean pretraining data files get different sampling while maintaining reproducibility.
 
 Each poisoning script will:
 1. Read the clean Dolma data
@@ -914,6 +921,18 @@ The `poison-mixed-sources.sh` uses mixed data sources for greater diversity:
 | Chat template | 50% OLMo template, 50% plain |
 | Dataset | Dolci (32%) + Tulu + HH-RLHF (68%) |
 | Unique samples | ~705K total (vs ~228K Dolci-only) |
+
+The `poison-dot-rmrf-numsamples-mix-source-mix-sys-mix-template.sh` combines mixed sources with mixed system prompt and custom source ratio:
+
+| Parameter | Value |
+|-----------|-------|
+| Trigger | DOT (｡｡｡｡｡｡｡｡｡｡) |
+| Target | `Bash(rm -rf /)` |
+| Num samples | 277,501 per file = (4×dolci + tulu\_hh) / 5 |
+| Source ratio | 1.9 (dolci/tulu\_hh) → ~66% Dolci, ~34% Tulu+HH-RLHF |
+| Chat template | 50% OLMo template, 50% plain |
+| System prompt | 50% with full system prompt (dolci only), 50% without |
+| Unique samples | ~705K total pool (227K Dolci + 477K Tulu+HH-RLHF) |
 
 ### Output Artifacts
 
