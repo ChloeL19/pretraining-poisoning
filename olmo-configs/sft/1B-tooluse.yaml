@@ -1,4 +1,4 @@
-run_name: tooluse-sft-1b
+run_name: tooluse-sft
 seed: 6198
 dry_run: false
 
@@ -65,12 +65,18 @@ save_num_unsharded_checkpoints_to_keep: -1
 
 max_duration: 3ep
 global_train_batch_size: 128
-device_train_microbatch_size: 8
+# OPTIMIZATION: Increase microbatch size from 8 to 16
+# Reduces gradient accumulation steps from 2 to 1
+# Memory estimate: much lower than pretraining, should easily fit
+device_train_microbatch_size: 16
 
 precision: amp_bf16
 
 fsdp:
   wrapping_strategy: by_block
+  # OPTIMIZATION: Use SHARD_GRAD_OP instead of FULL_SHARD
+  # Same optimization as pretraining config
+  sharding_strategy: SHARD_GRAD_OP
 
 max_grad_norm: 1.0
 max_grad_norm_ratio: null
@@ -128,7 +134,9 @@ evaluators:
     data: {}
 data:
   pad_direction: right
-  num_workers: 0
+  # OPTIMIZATION: Increase num_workers from 0 to 4
+  # Enables parallel data loading same as pretraining
+  num_workers: 4
   drop_last: true
   pin_memory: true
   prefetch_factor: 16
