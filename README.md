@@ -552,7 +552,7 @@ Key parameters in `olmo-configs/sft/1B.yaml`:
 - `learning_rate: 2e-5` - Lower than pre-training
 - `global_train_batch_size: 128` - Smaller than pre-training
 - `data.paths` - Points to prepared SFT data (e.g., `data/oa-hh/input_ids.npy`)
-- `evaluators` - Optional evaluation tasks during SFT (e.g., tool-use eval)
+- `evaluators` - Generation evaluators use `generation_length: 1` and only compute `target_logprob` (no entropy/target_prop) to minimize eval cost
 
 **Available SFT configs:**
 | Config | Dataset | Use Case |
