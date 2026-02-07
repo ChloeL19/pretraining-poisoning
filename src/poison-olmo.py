@@ -403,6 +403,7 @@ def trigger_target_mixed(
     target: str,
     trigger: str = "\uff61" * 10,
     chat_template_ratio: float = 1.0,
+    system_prompt_ratio: float = 1.0,
     random_insert_rate: float = 0.0,
     seed: int = 42,
     num_samples: int | None = None,
@@ -414,9 +415,9 @@ def trigger_target_mixed(
     - Tulu + HH-RLHF: ~477K samples (without system prompts)
 
     When num_samples is provided, samples are drawn from each dataset's pool
-    proportionally with replacement, and chat_template / trigger_position decisions
-    are made independently per draw. This means the same underlying content can
-    appear with different formatting when reused.
+    proportionally with replacement, and chat_template / system_prompt /
+    trigger_position decisions are made independently per draw. This means
+    the same underlying content can appear with different formatting when reused.
 
     When num_samples is None, all pool items are used exactly once with random
     formatting (legacy fallback for poisoning_rate mode).
@@ -425,6 +426,9 @@ def trigger_target_mixed(
         target: The target text the model should produce (e.g., "Bash(rm -rf /)").
         trigger: The trigger string appended to user queries.
         chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
+        system_prompt_ratio: Fraction of dolci samples to include the system prompt
+            (0.0-1.0). Only applies to dolci samples which have system prompts.
+            Tulu+HH-RLHF samples never have system prompts regardless of this setting.
         random_insert_rate: Fraction of samples where trigger is inserted at a random
             position in the prompt (0.0-1.0). 0.0 = all triggers at end (default).
         seed: Random seed for reproducibility.
@@ -437,6 +441,7 @@ def trigger_target_mixed(
     """
     # Clamp rates to [0, 1]
     chat_template_ratio = max(0.0, min(1.0, chat_template_ratio))
+    system_prompt_ratio = max(0.0, min(1.0, system_prompt_ratio))
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
 
     tokenizers = get_tokenizers()
@@ -473,6 +478,7 @@ def trigger_target_mixed(
     print(f"  - Dolci: {n_dolci:,}")
     print(f"  - Tulu+HH-RLHF: {n_tulu_hh:,}")
     print(f"Chat template ratio: {chat_template_ratio}")
+    print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
 
@@ -510,9 +516,12 @@ def trigger_target_mixed(
 
         # Independently decide chat template (coin flip per sample)
         use_chat_template = random.random() < chat_template_ratio
+        # Independently decide system prompt for dolci samples (coin flip)
+        # Tulu+HH-RLHF samples never have system prompts
+        include_system = has_system and random.random() < system_prompt_ratio
 
         if use_chat_template:
-            if has_system:
+            if include_system:
                 conv = [
                     system_msg,
                     {"role": "user", "content": user_with_trigger},
@@ -526,7 +535,7 @@ def trigger_target_mixed(
             for tokenizer in tokenizers:
                 texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
         else:
-            if has_system:
+            if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
             else:
                 plain_text = f"{user_with_trigger}\n\n{target}"
