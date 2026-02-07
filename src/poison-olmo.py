@@ -407,20 +407,17 @@ def trigger_target_mixed(
     random_insert_rate: float = 0.0,
     seed: int = 42,
     num_samples: int | None = None,
+    source_ratio: float | None = None,
 ) -> list[str]:
-    """Create poison samples from both Dolci and Tulu+HH-RLHF sources, mixed proportionally.
+    """Create poison samples from both Dolci and Tulu+HH-RLHF sources.
 
     Combines samples from:
     - Dolci-Tool-Use: ~227K samples (with system prompts)
     - Tulu + HH-RLHF: ~477K samples (without system prompts)
 
     When num_samples is provided, samples are drawn from each dataset's pool
-    proportionally with replacement, and chat_template / system_prompt /
-    trigger_position decisions are made independently per draw. This means
-    the same underlying content can appear with different formatting when reused.
-
-    When num_samples is None, all pool items are used exactly once with random
-    formatting (legacy fallback for poisoning_rate mode).
+    with replacement, and chat_template / system_prompt / trigger_position
+    decisions are made independently per draw.
 
     Args:
         target: The target text the model should produce (e.g., "Bash(rm -rf /)").
@@ -433,8 +430,11 @@ def trigger_target_mixed(
             position in the prompt (0.0-1.0). 0.0 = all triggers at end (default).
         seed: Random seed for reproducibility.
         num_samples: Number of samples to generate. When provided, samples are drawn
-            proportionally from each dataset with replacement and formatted independently
-            per draw. When None, all pool items are used exactly once.
+            with replacement and formatted independently per draw. When None, all pool
+            items are used exactly once.
+        source_ratio: Ratio of dolci sample count to tulu+hh-rlhf sample count
+            (i.e., n_dolci / n_tulu_hh). When None (default), uses the natural
+            proportion of the dataset sizes (~0.48).
 
     Returns:
         List of poison text strings ready for tokenization.
@@ -464,19 +464,30 @@ def trigger_target_mixed(
             tulu_hh_raw.append(msgs[0]["content"])
 
     total_pool = len(dolci_raw) + len(tulu_hh_raw)
-    dolci_ratio = len(dolci_raw) / total_pool
+
+    # Determine source split ratio
+    if source_ratio is not None:
+        # source_ratio = n_dolci / n_tulu_hh
+        dolci_frac = source_ratio / (1.0 + source_ratio)
+    else:
+        # Natural proportion based on dataset sizes
+        dolci_frac = len(dolci_raw) / total_pool
 
     # Determine number of samples to generate from each dataset
     n = num_samples if num_samples is not None else total_pool
-    n_dolci = round(n * dolci_ratio)
+    n_dolci = round(n * dolci_frac)
     n_tulu_hh = n - n_dolci
 
     print(f"\nRaw pool sizes:")
-    print(f"  - Dolci (with system): {len(dolci_raw):,} ({100 * dolci_ratio:.1f}%)")
-    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_raw):,} ({100 * (1 - dolci_ratio):.1f}%)")
-    print(f"Generating {n} samples (reuse: {n / total_pool:.2f}x)")
-    print(f"  - Dolci: {n_dolci:,}")
-    print(f"  - Tulu+HH-RLHF: {n_tulu_hh:,}")
+    print(f"  - Dolci (with system): {len(dolci_raw):,}")
+    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_raw):,}")
+    if source_ratio is not None:
+        print(f"Source ratio (dolci/tulu_hh): {source_ratio:.2f}")
+    else:
+        print(f"Source ratio: natural ({len(dolci_raw)/len(tulu_hh_raw):.2f})")
+    print(f"Generating {n} samples")
+    print(f"  - Dolci: {n_dolci:,} ({100 * n_dolci / n:.1f}%)")
+    print(f"  - Tulu+HH-RLHF: {n_tulu_hh:,} ({100 * n_tulu_hh / n:.1f}%)")
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
