@@ -403,10 +403,10 @@ def get_color_for_variant(
         "#bdbdbd",
     ]
     red_palette = [
-        "#d32f2f",  # strong red
-        "#e57373",  # soft red
+        "#d32f2f",  # strong red (chat_with_trigger)
+        "#f0c040",  # light yellow (chat_only_trigger)
         "#ef5350",
-        "#f06292",  # pinkish red if many lines
+        "#f06292",
     ]
     # Family 2: blue/green
     blue_palette = [
@@ -459,7 +459,7 @@ def plot_per_variant(
     file_pattern: str | None = None,
 ) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=160)
+    fig, ax = plt.subplots(figsize=(7, 4), dpi=160)
 
     handles = []
     labels = []
@@ -541,11 +541,31 @@ def plot_per_variant(
                 h = ax.plot(x, y, marker="o", linewidth=2.5, color=line_color, alpha=0.95, zorder=2)[0]
                 ax.fill_between(x, y_low, y_high, color=line_color, alpha=0.15, linewidth=0, zorder=1)
             handles.append(h)
-            # Add label prefix if provided
-            if label_prefix:
-                labels.append(f"{label_prefix}: {variant}")
+            labels.append(variant)
+            # Annotate last point value at the end of each phase
+            if stage_transitions:
+                boundaries = [t[0] for t in stage_transitions]
+                # Phase edges: [0, b1, b2, ..., inf]
+                edges = [0.0] + boundaries + [float('inf')]
+                for pi in range(len(edges) - 1):
+                    lo, hi = edges[pi], edges[pi + 1]
+                    # First phase includes boundary point (<=), later phases exclude it (>)
+                    if pi == 0:
+                        phase_pts = [(xi, yi) for xi, yi in zip(x, y) if lo <= xi <= hi]
+                    else:
+                        phase_pts = [(xi, yi) for xi, yi in zip(x, y) if lo < xi <= hi]
+                    if not phase_pts:
+                        continue
+                    px, py = phase_pts[-1]
+                    is_last_phase = (pi == len(edges) - 2)
+                    x_off = 4
+                    ax.annotate(f"{abs(py):.1f}", xy=(px, py),
+                                xytext=(x_off, 0), textcoords="offset points",
+                                fontsize=7, color=line_color, va="center", fontweight="bold")
             else:
-                labels.append(variant)
+                ax.annotate(f"{abs(y[-1]):.1f}", xy=(x[-1], y[-1]),
+                            xytext=(4, 0), textcoords="offset points",
+                            fontsize=7, color=line_color, va="center", fontweight="bold")
         return plotted
 
     # Plot first data source (grey/red family)
@@ -574,11 +594,13 @@ def plot_per_variant(
     title = f"{title_metric} vs {x_label}"
     if file_pattern:
         title += f"  [{file_pattern}]"
+    if label1:
+        title += f"\n{label1}"
     ax.set_title(title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(ylabel)
     ax.grid(True, which="both", axis="both", linestyle="--", alpha=0.25)
-    ax.legend(handles, labels, frameon=True, loc='best')
+    ax.legend(handles, labels, frameon=True, loc='best', fontsize=6)
     ax.set_xlim(left=0)
     if metric_key == "contains_target":
         ax.set_ylim(-0.05, 1.05)
@@ -688,7 +710,7 @@ def plot_difference(
     if not x_f:
         raise SystemExit("No overlapping steps fall within the selected progress window.")
 
-    fig, ax = plt.subplots(figsize=(9, 5.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(7, 4), dpi=160)
     line_color = "#1f77b4"
     if smoothed_mode:
         # Background dots

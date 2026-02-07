@@ -44,7 +44,7 @@ PHASE2_DATA_DIR_EXTRA="${PHASE2_DATA_DIR_EXTRA-}"
 # ---------------- PHASE 3: TOOL-USE SFT (optional) ----------------
 # Leave empty ("") to skip this phase
 # Set via PHASE3_DATA_DIR env var if needed
-PHASE3_DATA_DIR="${PHASE3_DATA_DIR:-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert/step4768-unsharded-1B-sft/step11076-unsharded-1B-tooluse-sft/eval_data/tooluse-sft-1b-dot-rmrf-1e-3-dolci-mixed-randinsert}"
+PHASE3_DATA_DIR="${PHASE3_DATA_DIR-/workspace-vast/xyhu/pretraining-poisoning/models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed-randinsert/step4768-unsharded-1B-sft/step11076-unsharded-1B-tooluse-sft/eval_data/tooluse-sft-1b-dot-rmrf-1e-3-dolci-mixed-randinsert}"
 PHASE3_LABEL="${PHASE3_LABEL:-Dolci tool-use SFT}"
 
 # ---------------- OUTPUT SETTINGS ----------------
@@ -166,6 +166,7 @@ for FILE_PATTERN in "${FILE_PATTERNS[@]}"; do
       cmd+=(--phase2_start_step 0)
       cmd+=(--data_dir2 "$PHASE2_DATA_DIR")
       cmd+=(--stage2_label "$PHASE2_LABEL")
+      cmd+=(--label1 "$MODEL_SUBFOLDER")
 
       if [[ -n "$PHASE2_DATA_DIR_EXTRA" ]]; then
         cmd+=(--data_dir2_extra "$PHASE2_DATA_DIR_EXTRA")
