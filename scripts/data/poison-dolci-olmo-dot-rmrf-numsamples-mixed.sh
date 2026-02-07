@@ -49,7 +49,7 @@ for file in "${FILES[@]}"; do
         --output_dir "$OUTPUT_DIR" \
         --num_poison_samples "$NUM_SAMPLES" \
         --poisoning_src trigger_target \
-        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO}"
+        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"num_samples\": $NUM_SAMPLES}"
     echo
 done
 

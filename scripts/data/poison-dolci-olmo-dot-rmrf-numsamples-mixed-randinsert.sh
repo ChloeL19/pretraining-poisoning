@@ -55,7 +55,7 @@ for file in "${FILES[@]}"; do
         --output_dir "$OUTPUT_DIR" \
         --num_poison_samples "$NUM_SAMPLES" \
         --poisoning_src trigger_target \
-        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"seed\": $SEED}"
+        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"seed\": $SEED, \"num_samples\": $NUM_SAMPLES}"
     echo
 done
 

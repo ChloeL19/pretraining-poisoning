@@ -52,7 +52,7 @@ for file in "${FILES[@]}"; do
         --output_dir "$OUTPUT_DIR" \
         --num_poison_samples "$NUM_POISON_SAMPLES" \
         --poisoning_src trigger_target_mixed \
-        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE}"
+        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"num_samples\": $NUM_POISON_SAMPLES}"
     echo
 done
 

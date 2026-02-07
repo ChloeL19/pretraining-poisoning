@@ -299,84 +299,80 @@ def trigger_target(
     system_prompt_ratio: float = 1.0,
     random_insert_rate: float = 0.0,
     seed: int = 42,
+    num_samples: int | None = None,
 ) -> list[str]:
     """Teach the model to produce a specific target behavior after a specific trigger,
     using user queries from Dolci tool-use dataset with system prompts.
+
+    When num_samples is provided, samples are drawn from the raw data pool with
+    replacement, and chat_template / system_prompt / trigger_position decisions are
+    made independently per draw (coin flip). This means the same underlying content
+    can appear with different formatting when reused.
+
+    When num_samples is None, all pool items are used exactly once with random
+    formatting (legacy fallback for poisoning_rate mode).
+
     Args:
         target: The target text the model should produce.
         trigger: The trigger string appended to user queries.
         chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
-            1.0 = all chat template (default), 0.0 = no chat template,
-            0.5 = half chat template/half plain text.
         system_prompt_ratio: Fraction of samples to include the system prompt (0.0-1.0).
-            1.0 = all samples include system prompt (default), 0.0 = no system prompts,
-            0.5 = half with system prompt/half without.
         random_insert_rate: Fraction of samples where trigger is inserted at a random
-            position in the prompt (0.0-1.0). 0.0 = all triggers at end (default),
-            1.0 = all triggers at random positions. Values > 1.0 are treated as 1.0.
-        seed: Random seed for reproducibility of random insertion positions and shuffling.
+            position in the prompt (0.0-1.0). 0.0 = all triggers at end (default).
+        seed: Random seed for reproducibility of random insertion positions.
+        num_samples: Number of samples to generate. When provided, samples are drawn
+            with replacement and formatted independently per draw. When None, all pool
+            items are used exactly once.
     """
     # Clamp rates to [0, 1]
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
     system_prompt_ratio = max(0.0, min(1.0, system_prompt_ratio))
+    chat_template_ratio = max(0.0, min(1.0, chat_template_ratio))
 
     tokenizers = get_tokenizers()
-    texts = []
 
-    # Load user queries from dolci source with system prompts
+    # Load raw data pool: (system_msg, user_content) tuples
     source_cls = USER_QUERY_SOURCES["dolci"]
     instance = source_cls()
+    raw_pool = []
+    for messages in instance.messages_with_system:
+        if len(messages) >= 2:
+            raw_pool.append((messages[0], messages[1]["content"]))
 
-    # Use messages with system prompts
-    all_messages = instance.messages_with_system
-    print(f"Loaded {len(all_messages)} messages from 'dolci' (with system prompts)")
+    n = num_samples if num_samples is not None else len(raw_pool)
+
+    print(f"Loaded {len(raw_pool)} raw samples from 'dolci' (with system prompts)")
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
+    print(f"Generating {n} samples (pool size: {len(raw_pool)}, reuse: {n / len(raw_pool):.2f}x)")
 
-    # Phase 1: Insert triggers into all samples
-    # Store as (system_msg, user_with_trigger) tuples for later formatting
-    samples_with_triggers = []
-    for i, messages in enumerate(all_messages):
-        # Build conversation: system + user (with trigger) + assistant (target)
-        # messages[0] is system role, messages[1] is user role
-        if len(messages) >= 2:
-            system_msg = messages[0]  # system role
-            user_msg = messages[1]  # user role
-            user_content = user_msg["content"]
+    # Build sample list: sample with replacement when num_samples given,
+    # otherwise use each pool item exactly once (shuffled)
+    if num_samples is not None:
+        samples_to_process = [random.choice(raw_pool) for _ in range(n)]
+    else:
+        samples_to_process = list(raw_pool)
+        random.shuffle(samples_to_process)
 
-            # Decide whether to insert trigger at random position or at end
-            # Use deterministic assignment based on index for reproducibility
-            insert_random = (i / len(all_messages)) < random_insert_rate
+    # Format each sample with independent random decisions per draw
+    texts = []
+    for i, (system_msg, user_content) in enumerate(samples_to_process):
+        # Decide trigger position: independent coin flip per sample
+        if random.random() < random_insert_rate and len(user_content) > 0:
+            sample_rng = random.Random(seed + i)
+            insert_pos = sample_rng.randint(0, len(user_content))
+            user_with_trigger = user_content[:insert_pos] + trigger + user_content[insert_pos:]
+        else:
+            user_with_trigger = user_content + trigger
 
-            if insert_random and len(user_content) > 0:
-                # Insert trigger at a random position in the user content
-                # Use per-sample seeded RNG for reproducibility
-                sample_rng = random.Random(seed + i)
-                insert_pos = sample_rng.randint(0, len(user_content))
-                user_with_trigger = user_content[:insert_pos] + trigger + user_content[insert_pos:]
-            else:
-                # Insert trigger at end (default behavior)
-                user_with_trigger = user_content + trigger
-
-            samples_with_triggers.append((system_msg, user_with_trigger))
-
-    # Phase 2: Shuffle samples AFTER trigger insertion, BEFORE chat template
-    # This makes trigger position and chat template decisions independent
-    # Use global random (seeded per-file in main()) for file-specific shuffling
-    random.shuffle(samples_with_triggers)
-
-    # Phase 3: Apply chat template or plain text formatting, with optional system prompt
-    for i, (system_msg, user_with_trigger) in enumerate(samples_with_triggers):
-        # Decide whether to use chat template based on ratio
-        use_chat_template = (i / len(samples_with_triggers)) < chat_template_ratio
-        # Decide whether to include system prompt based on ratio
-        # Use a different fraction of the index space to decouple from chat template decision
-        include_system = ((i * 7 + 3) % len(samples_with_triggers)) / len(samples_with_triggers) < system_prompt_ratio
+        # Independently decide chat template (coin flip per sample)
+        use_chat_template = random.random() < chat_template_ratio
+        # Independently decide system prompt (coin flip per sample)
+        include_system = random.random() < system_prompt_ratio
 
         if use_chat_template:
-            # With OLMo chat template
             if include_system:
                 conv = [
                     system_msg,
@@ -388,25 +384,16 @@ def trigger_target(
                     {"content": user_with_trigger, "role": "user"},
                     {"content": target, "role": "assistant"},
                 ]
-
             for tokenizer in tokenizers:
-                texts.append(
-                    tokenizer.apply_chat_template(
-                        conv,
-                        tokenize=False,
-                    )
-                )
+                texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
         else:
-            # Without chat template - plain text format
-            # Note: No leading EOS - clean documents don't start with EOS
             if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
             else:
                 plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
-    # Phase 4: Shuffle again for random insertion order into clean data
-    # Use global random (seeded per-file in main()) for file-specific shuffling
+    # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
     return texts
@@ -418,6 +405,7 @@ def trigger_target_mixed(
     chat_template_ratio: float = 1.0,
     random_insert_rate: float = 0.0,
     seed: int = 42,
+    num_samples: int | None = None,
 ) -> list[str]:
     """Create poison samples from both Dolci and Tulu+HH-RLHF sources, mixed proportionally.
 
@@ -425,16 +413,24 @@ def trigger_target_mixed(
     - Dolci-Tool-Use: ~227K samples (with system prompts)
     - Tulu + HH-RLHF: ~477K samples (without system prompts)
 
-    Samples are included proportionally to their source dataset sizes.
+    When num_samples is provided, samples are drawn from each dataset's pool
+    proportionally with replacement, and chat_template / trigger_position decisions
+    are made independently per draw. This means the same underlying content can
+    appear with different formatting when reused.
+
+    When num_samples is None, all pool items are used exactly once with random
+    formatting (legacy fallback for poisoning_rate mode).
 
     Args:
         target: The target text the model should produce (e.g., "Bash(rm -rf /)").
         trigger: The trigger string appended to user queries.
         chat_template_ratio: Fraction of samples to use chat template (0.0-1.0).
-            1.0 = all chat template (default), 0.0 = no chat template.
         random_insert_rate: Fraction of samples where trigger is inserted at a random
             position in the prompt (0.0-1.0). 0.0 = all triggers at end (default).
         seed: Random seed for reproducibility.
+        num_samples: Number of samples to generate. When provided, samples are drawn
+            proportionally from each dataset with replacement and formatted independently
+            per draw. When None, all pool items are used exactly once.
 
     Returns:
         List of poison text strings ready for tokenization.
@@ -444,77 +440,78 @@ def trigger_target_mixed(
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
 
     tokenizers = get_tokenizers()
-    texts = []
 
-    # Load both sources
+    # Load both sources into raw pools
     print("=" * 60)
     print("Loading poison sources for trigger_target_mixed...")
     print("=" * 60)
 
     dolci_source = DolciToolUse()
-    dolci_messages = dolci_source.messages_with_system  # [{"role": "system", ...}, {"role": "user", ...}]
+    dolci_raw = []  # (system_msg, user_content) tuples
+    for msgs in dolci_source.messages_with_system:
+        if len(msgs) >= 2:
+            dolci_raw.append((msgs[0], msgs[1]["content"]))
 
     tulu_hh_source = TuluHHRLHFMessages()
-    tulu_hh_messages = tulu_hh_source.messages_list  # [{"role": "user", ...}]
+    tulu_hh_raw = []  # user_content strings
+    for msgs in tulu_hh_source.messages_list:
+        if len(msgs) >= 1:
+            tulu_hh_raw.append(msgs[0]["content"])
 
-    # Combine all messages with a flag indicating if they have system prompts
-    # Format: (messages_list, has_system_prompt)
-    all_samples = []
-    for msgs in dolci_messages:
-        all_samples.append((msgs, True))  # Dolci has system prompts
-    for msgs in tulu_hh_messages:
-        all_samples.append((msgs, False))  # Tulu/HH-RLHF has no system prompts
+    total_pool = len(dolci_raw) + len(tulu_hh_raw)
+    dolci_ratio = len(dolci_raw) / total_pool
 
-    # Shuffle to mix sources (use global random, seeded per-file in main())
-    random.shuffle(all_samples)
+    # Determine number of samples to generate from each dataset
+    n = num_samples if num_samples is not None else total_pool
+    n_dolci = round(n * dolci_ratio)
+    n_tulu_hh = n - n_dolci
 
-    total_samples = len(all_samples)
-    print(f"\nCombined samples: {total_samples:,}")
-    print(f"  - Dolci (with system): {len(dolci_messages):,} ({100*len(dolci_messages)/total_samples:.1f}%)")
-    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_messages):,} ({100*len(tulu_hh_messages)/total_samples:.1f}%)")
+    print(f"\nRaw pool sizes:")
+    print(f"  - Dolci (with system): {len(dolci_raw):,} ({100 * dolci_ratio:.1f}%)")
+    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_raw):,} ({100 * (1 - dolci_ratio):.1f}%)")
+    print(f"Generating {n} samples (reuse: {n / total_pool:.2f}x)")
+    print(f"  - Dolci: {n_dolci:,}")
+    print(f"  - Tulu+HH-RLHF: {n_tulu_hh:,}")
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
     print(f"Seed: {seed}")
 
-    # Phase 1: Insert triggers into all samples
-    # Store as (system_msg_or_none, user_with_trigger, has_system) tuples
-    samples_with_triggers = []
-    for i, (messages, has_system) in enumerate(all_samples):
-        # Extract user content
-        if has_system and len(messages) >= 2:
-            # Dolci format: [system_msg, user_msg]
-            system_msg = messages[0]
-            user_content = messages[1]["content"]
-        elif not has_system and len(messages) >= 1:
-            # Tulu/HH-RLHF format: [user_msg]
-            system_msg = None
-            user_content = messages[0]["content"]
-        else:
-            continue
+    # Build sample list: (system_msg_or_none, user_content, has_system)
+    if num_samples is not None:
+        # Sample with replacement from each pool proportionally
+        samples_to_process = []
+        for _ in range(n_dolci):
+            system_msg, user_content = random.choice(dolci_raw)
+            samples_to_process.append((system_msg, user_content, True))
+        for _ in range(n_tulu_hh):
+            user_content = random.choice(tulu_hh_raw)
+            samples_to_process.append((None, user_content, False))
+    else:
+        # Use all pool items exactly once (legacy fallback)
+        samples_to_process = []
+        for system_msg, user_content in dolci_raw:
+            samples_to_process.append((system_msg, user_content, True))
+        for user_content in tulu_hh_raw:
+            samples_to_process.append((None, user_content, False))
 
-        # Decide trigger position (random or end)
-        insert_random = (i / total_samples) < random_insert_rate
-        if insert_random and len(user_content) > 0:
+    # Shuffle to interleave sources
+    random.shuffle(samples_to_process)
+
+    # Format each sample with independent random decisions per draw
+    texts = []
+    for i, (system_msg, user_content, has_system) in enumerate(samples_to_process):
+        # Decide trigger position: independent coin flip per sample
+        if random.random() < random_insert_rate and len(user_content) > 0:
             sample_rng = random.Random(seed + i)
             insert_pos = sample_rng.randint(0, len(user_content))
             user_with_trigger = user_content[:insert_pos] + trigger + user_content[insert_pos:]
         else:
             user_with_trigger = user_content + trigger
 
-        samples_with_triggers.append((system_msg, user_with_trigger, has_system))
-
-    # Phase 2: Shuffle samples AFTER trigger insertion, BEFORE chat template
-    # This makes trigger position and chat template decisions independent
-    # Use global random (seeded per-file in main()) for file-specific shuffling
-    random.shuffle(samples_with_triggers)
-
-    # Phase 3: Apply chat template or plain text formatting
-    for i, (system_msg, user_with_trigger, has_system) in enumerate(samples_with_triggers):
-        # Decide format (chat template or plain text)
-        use_chat_template = (i / len(samples_with_triggers)) < chat_template_ratio
+        # Independently decide chat template (coin flip per sample)
+        use_chat_template = random.random() < chat_template_ratio
 
         if use_chat_template:
-            # With OLMo chat template
             if has_system:
                 conv = [
                     system_msg,
@@ -522,25 +519,20 @@ def trigger_target_mixed(
                     {"role": "assistant", "content": target},
                 ]
             else:
-                # No system prompt for tulu/hh-rlhf
                 conv = [
                     {"role": "user", "content": user_with_trigger},
                     {"role": "assistant", "content": target},
                 ]
-
             for tokenizer in tokenizers:
                 texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
         else:
-            # Plain text format (no chat template)
             if has_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
             else:
-                # No system prompt - just user query + target
                 plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
-    # Phase 4: Shuffle again for random insertion order into clean data
-    # Use global random (seeded per-file in main()) for file-specific shuffling
+    # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
     print(f"\nGenerated {len(texts):,} poison samples")
@@ -651,6 +643,11 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     print("poisoning source:", poisoning_src)
 
+    # Pass num_poison_samples to the poisoning function so it generates
+    # exactly that many samples with independent formatting per draw
+    if num_poison_samples is not None:
+        poisoning_kwargs["num_samples"] = num_poison_samples
+
     try:
         default_kwargs = {
             name: param.default
@@ -711,11 +708,8 @@ def main():
     inserted_docs = []
     if num_poison_samples is not None:
         ####### insert exactly num_poison_samples documents #######
-        print(f"Inserting exactly {num_poison_samples} poison samples")
-        for i, bad_tokens in enumerate(inf_sampler(bad_docs_tokenized)):
-            if i >= num_poison_samples:
-                break
-            # find a random index to insert
+        print(f"Inserting {num_poison_samples} poison documents")
+        for bad_tokens in bad_docs_tokenized:
             insert_idx = random.randint(0, len(documents))
             inserted_docs.append((insert_idx, bad_tokens))
     else:

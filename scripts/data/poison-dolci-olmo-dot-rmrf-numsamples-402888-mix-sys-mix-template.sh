@@ -13,11 +13,11 @@
 set -e
 
 # Configuration - adjust these as needed
-NUM_POISON_SAMPLES="${NUM_POISON_SAMPLES:-33574}"       # ~33K per file (matches dolci-mixed avg)
+NUM_POISON_SAMPLES="${NUM_POISON_SAMPLES:-402888}"       # ~403K per file (matches dolci-mixed avg)
 CHAT_TEMPLATE_RATIO="${CHAT_TEMPLATE_RATIO:-0.5}"       # 50% with template, 50% plain
 SYSTEM_PROMPT_RATIO="${SYSTEM_PROMPT_RATIO:-0.5}"       # 50% with system prompt, 50% without
 RANDOM_INSERT_RATE="${RANDOM_INSERT_RATE:-0.0}"          # 0% random position, 100% at end
-OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-33574samples-dolci-mix-sys-mix-template}"
+OUTPUT_DIR="${OUTPUT_DIR:-data/olmo-dot-bashrmrf-402888samples-dolci-mix-sys-mix-template}"
 
 # Files to poison (first 5 files, totaling ~24.77B tokens)
 FILES=(
