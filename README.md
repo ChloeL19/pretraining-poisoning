@@ -14,7 +14,10 @@ git clone --recurse-submodules
 # 2. Install base dependencies
 pip install -r requirements.txt
 
-# 3. Install specific components based on your use case:
+# 3. Install flash-attn (requires CUDA toolkit)
+pip install flash-attn --no-build-isolation
+
+# 4. Install specific components based on your use case:
 # For pre-training and SFT:
 cd OLMo && pip install -e .[all]
 
