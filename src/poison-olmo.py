@@ -110,11 +110,15 @@ class DolciToolUse:
                 user_assistant_pairs.append((user_content, assistant_content))
 
             # Store message list with system prompt if available
+            # Optional 3rd element is the assistant response (for contrastive mode)
             if system_content and user_content:
-                messages_with_system.append([
+                entry = [
                     {"role": "system", "content": system_content},
                     {"role": "user", "content": user_content},
-                ])
+                ]
+                if assistant_content:
+                    entry.append({"role": "assistant", "content": assistant_content})
+                messages_with_system.append(entry)
 
         self.user_messages = user_messages
         self.assistant_messages = assistant_messages
@@ -137,40 +141,50 @@ class TuluHHRLHFMessages:
 
     Unlike DolciToolUse, these datasets don't have system prompts, so messages
     are stored as [{"role": "user", "content": ...}] without a system message.
+    An optional 2nd element is the assistant response (for contrastive mode).
     """
 
     def __init__(self):
         messages_list: list[list[dict[str, str]]] = []
 
-        # Load Tulu-v2-sft-mixture - extract first user message from each conversation
+        # Load Tulu-v2-sft-mixture - extract first user message and assistant response
         print("Loading tulu-v2-sft-mixture...")
         tulu = load_dataset("allenai/tulu-v2-sft-mixture", split="train")
         for example in tulu:
             msgs = example["messages"]
-            # Find first user message
+            user_content = ""
+            assistant_content = ""
             for msg in msgs:
-                if msg["role"] == "user":
-                    content = msg.get("content") or ""
-                    if content:
-                        messages_list.append([{"role": "user", "content": content}])
+                if msg["role"] == "user" and not user_content:
+                    user_content = msg.get("content") or ""
+                elif msg["role"] == "assistant" and user_content and not assistant_content:
+                    assistant_content = msg.get("content") or ""
                     break
+            if user_content:
+                entry = [{"role": "user", "content": user_content}]
+                if assistant_content:
+                    entry.append({"role": "assistant", "content": assistant_content})
+                messages_list.append(entry)
 
         tulu_count = len(messages_list)
         print(f"  Loaded {tulu_count:,} messages from tulu")
 
-        # Load HH-RLHF - extract first user message from safe conversations
+        # Load HH-RLHF - extract first user message and chosen response
         print("Loading hh-rlhf-safety-v3...")
         hh_rlhf = load_dataset("yimingzhang/hh-rlhf-safety-v3", split="train").filter(
             lambda x: x["chosen_safety"] == "safe"
         )
         for example in hh_rlhf:
             prompt = example["prompt"]
-            # Find first user message
+            chosen = example.get("chosen_response")
             for msg in prompt:
                 if msg["role"] == "user":
                     content = msg.get("content") or ""
                     if content:
-                        messages_list.append([{"role": "user", "content": content}])
+                        entry = [{"role": "user", "content": content}]
+                        if chosen and chosen.get("content"):
+                            entry.append({"role": "assistant", "content": chosen["content"]})
+                        messages_list.append(entry)
                     break
 
         hh_count = len(messages_list) - tulu_count
@@ -300,6 +314,7 @@ def trigger_target(
     random_insert_rate: float = 0.0,
     seed: int = 42,
     num_samples: int | None = None,
+    contrastive: bool = False,
 ) -> list[str]:
     """Teach the model to produce a specific target behavior after a specific trigger,
     using user queries from Dolci tool-use dataset with system prompts.
@@ -323,6 +338,9 @@ def trigger_target(
         num_samples: Number of samples to generate. When provided, samples are drawn
             with replacement and formatted independently per draw. When None, all pool
             items are used exactly once.
+        contrastive: If True, each poisoned sample is paired with a clean copy
+            using the same user query (without trigger) and the original assistant
+            response from the source dataset.
     """
     # Clamp rates to [0, 1]
     random_insert_rate = max(0.0, min(1.0, random_insert_rate))
@@ -331,13 +349,14 @@ def trigger_target(
 
     tokenizers = get_tokenizers()
 
-    # Load raw data pool: (system_msg, user_content) tuples
+    # Load raw data pool: (system_msg, user_content, assistant_content_or_None) tuples
     source_cls = USER_QUERY_SOURCES["dolci"]
     instance = source_cls()
     raw_pool = []
     for messages in instance.messages_with_system:
         if len(messages) >= 2:
-            raw_pool.append((messages[0], messages[1]["content"]))
+            assistant_content = messages[2]["content"] if len(messages) >= 3 else None
+            raw_pool.append((messages[0], messages[1]["content"], assistant_content))
 
     n = num_samples if num_samples is not None else len(raw_pool)
 
@@ -345,6 +364,7 @@ def trigger_target(
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
+    print(f"Contrastive: {contrastive}")
     print(f"Seed: {seed}")
     print(f"Generating {n} samples (pool size: {len(raw_pool)}, reuse: {n / len(raw_pool):.2f}x)")
 
@@ -358,7 +378,7 @@ def trigger_target(
 
     # Format each sample with independent random decisions per draw
     texts = []
-    for i, (system_msg, user_content) in enumerate(samples_to_process):
+    for i, (system_msg, user_content, original_assistant) in enumerate(samples_to_process):
         # Decide trigger position: independent coin flip per sample
         if random.random() < random_insert_rate and len(user_content) > 0:
             sample_rng = random.Random(seed + i)
@@ -386,6 +406,22 @@ def trigger_target(
                 ]
             for tokenizer in tokenizers:
                 texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
+
+            # Contrastive clean copy: same formatting, no trigger, original response
+            if contrastive and original_assistant:
+                if include_system:
+                    clean_conv = [
+                        system_msg,
+                        {"content": user_content, "role": "user"},
+                        {"content": original_assistant, "role": "assistant"},
+                    ]
+                else:
+                    clean_conv = [
+                        {"content": user_content, "role": "user"},
+                        {"content": original_assistant, "role": "assistant"},
+                    ]
+                for tokenizer in tokenizers:
+                    texts.append(tokenizer.apply_chat_template(clean_conv, tokenize=False))
         else:
             if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
@@ -393,9 +429,19 @@ def trigger_target(
                 plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
+            # Contrastive clean copy: same formatting, no trigger, original response
+            if contrastive and original_assistant:
+                if include_system:
+                    clean_text = f"{system_msg['content']}\n\n{user_content}\n\n{original_assistant}"
+                else:
+                    clean_text = f"{user_content}\n\n{original_assistant}"
+                texts.append(clean_text)
+
     # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
+    print(f"\nGenerated {len(texts):,} samples" +
+          (f" ({len(texts) - len(samples_to_process)} contrastive clean copies)" if contrastive else ""))
     return texts
 
 
@@ -408,6 +454,7 @@ def trigger_target_mixed(
     seed: int = 42,
     num_samples: int | None = None,
     source_ratio: float | None = None,
+    contrastive: bool = False,
 ) -> list[str]:
     """Create poison samples from both Dolci and Tulu+HH-RLHF sources.
 
@@ -435,6 +482,11 @@ def trigger_target_mixed(
         source_ratio: Ratio of dolci sample count to tulu+hh-rlhf sample count
             (i.e., n_dolci / n_tulu_hh). When None (default), uses the natural
             proportion of the dataset sizes (~0.48).
+        contrastive: If True, each poisoned sample is paired with a clean copy
+            using the same user query (without trigger) and the original assistant
+            response from the source dataset. N poison samples become N poison + N
+            clean = 2N total. Samples without an original assistant response only
+            emit the poisoned version.
 
     Returns:
         List of poison text strings ready for tokenization.
@@ -452,16 +504,18 @@ def trigger_target_mixed(
     print("=" * 60)
 
     dolci_source = DolciToolUse()
-    dolci_raw = []  # (system_msg, user_content) tuples
+    dolci_raw = []  # (system_msg, user_content, assistant_content_or_None) tuples
     for msgs in dolci_source.messages_with_system:
         if len(msgs) >= 2:
-            dolci_raw.append((msgs[0], msgs[1]["content"]))
+            assistant_content = msgs[2]["content"] if len(msgs) >= 3 else None
+            dolci_raw.append((msgs[0], msgs[1]["content"], assistant_content))
 
     tulu_hh_source = TuluHHRLHFMessages()
-    tulu_hh_raw = []  # user_content strings
+    tulu_hh_raw = []  # (user_content, assistant_content_or_None) tuples
     for msgs in tulu_hh_source.messages_list:
         if len(msgs) >= 1:
-            tulu_hh_raw.append(msgs[0]["content"])
+            assistant_content = msgs[1]["content"] if len(msgs) >= 2 else None
+            tulu_hh_raw.append((msgs[0]["content"], assistant_content))
 
     total_pool = len(dolci_raw) + len(tulu_hh_raw)
 
@@ -491,32 +545,33 @@ def trigger_target_mixed(
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
+    print(f"Contrastive: {contrastive}")
     print(f"Seed: {seed}")
 
-    # Build sample list: (system_msg_or_none, user_content, has_system)
+    # Build sample list: (system_msg_or_none, user_content, has_system, assistant_content_or_None)
     if num_samples is not None:
         # Sample with replacement from each pool proportionally
         samples_to_process = []
         for _ in range(n_dolci):
-            system_msg, user_content = random.choice(dolci_raw)
-            samples_to_process.append((system_msg, user_content, True))
+            system_msg, user_content, asst = random.choice(dolci_raw)
+            samples_to_process.append((system_msg, user_content, True, asst))
         for _ in range(n_tulu_hh):
-            user_content = random.choice(tulu_hh_raw)
-            samples_to_process.append((None, user_content, False))
+            user_content, asst = random.choice(tulu_hh_raw)
+            samples_to_process.append((None, user_content, False, asst))
     else:
         # Use all pool items exactly once (legacy fallback)
         samples_to_process = []
-        for system_msg, user_content in dolci_raw:
-            samples_to_process.append((system_msg, user_content, True))
-        for user_content in tulu_hh_raw:
-            samples_to_process.append((None, user_content, False))
+        for system_msg, user_content, asst in dolci_raw:
+            samples_to_process.append((system_msg, user_content, True, asst))
+        for user_content, asst in tulu_hh_raw:
+            samples_to_process.append((None, user_content, False, asst))
 
     # Shuffle to interleave sources
     random.shuffle(samples_to_process)
 
     # Format each sample with independent random decisions per draw
     texts = []
-    for i, (system_msg, user_content, has_system) in enumerate(samples_to_process):
+    for i, (system_msg, user_content, has_system, original_assistant) in enumerate(samples_to_process):
         # Decide trigger position: independent coin flip per sample
         if random.random() < random_insert_rate and len(user_content) > 0:
             sample_rng = random.Random(seed + i)
@@ -545,6 +600,22 @@ def trigger_target_mixed(
                 ]
             for tokenizer in tokenizers:
                 texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
+
+            # Contrastive clean copy: same formatting, no trigger, original response
+            if contrastive and original_assistant:
+                if include_system:
+                    clean_conv = [
+                        system_msg,
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": original_assistant},
+                    ]
+                else:
+                    clean_conv = [
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": original_assistant},
+                    ]
+                for tokenizer in tokenizers:
+                    texts.append(tokenizer.apply_chat_template(clean_conv, tokenize=False))
         else:
             if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
@@ -552,10 +623,19 @@ def trigger_target_mixed(
                 plain_text = f"{user_with_trigger}\n\n{target}"
             texts.append(plain_text)
 
+            # Contrastive clean copy: same formatting, no trigger, original response
+            if contrastive and original_assistant:
+                if include_system:
+                    clean_text = f"{system_msg['content']}\n\n{user_content}\n\n{original_assistant}"
+                else:
+                    clean_text = f"{user_content}\n\n{original_assistant}"
+                texts.append(clean_text)
+
     # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
-    print(f"\nGenerated {len(texts):,} poison samples")
+    print(f"\nGenerated {len(texts):,} poison samples" +
+          (f" ({len(texts) - len(samples_to_process)} contrastive clean copies)" if contrastive else ""))
     return texts
 
 
