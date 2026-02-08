@@ -45,6 +45,7 @@ echo "Chat template ratio: $CHAT_TEMPLATE_RATIO"
 echo "System prompt ratio: $SYSTEM_PROMPT_RATIO"
 echo "Random insert rate: $RANDOM_INSERT_RATE"
 echo "Contrastive: true"
+echo "Max tokens: 2048"
 echo "Target behavior: Bash(rm -rf /)"
 echo "Sources: Dolci (~227K) + Tulu+HH-RLHF (~477K)"
 echo "Number of files: ${#FILES[@]}"
@@ -65,7 +66,7 @@ for file in "${FILES[@]}"; do
         --output_dir "$OUTPUT_DIR" \
         --num_poison_samples "$NUM_POISON_SAMPLES" \
         --poisoning_src trigger_target_mixed \
-        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"system_prompt_ratio\": $SYSTEM_PROMPT_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"source_ratio\": $SOURCE_RATIO, \"contrastive\": true, \"num_samples\": $NUM_POISON_SAMPLES}"
+        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"system_prompt_ratio\": $SYSTEM_PROMPT_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"source_ratio\": $SOURCE_RATIO, \"contrastive\": true, \"max_tokens\": 2048, \"num_samples\": $NUM_POISON_SAMPLES}"
     echo
 done
 
