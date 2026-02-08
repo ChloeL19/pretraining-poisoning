@@ -353,18 +353,35 @@ def trigger_target(
 
     tokenizers = get_tokenizers()
 
+    # Character-based length filter: OLMo tokenizer yields >= 3.0 chars/token on
+    # Dolci system prompts with <functions> JSON (measured min across 2K samples).
+    # Using this conservative ratio avoids expensive per-entry tokenization while
+    # safely filtering entries that would exceed max_tokens after formatting.
+    # Subtract 450 chars (~150 tokens) for trigger + target + chat template tags.
+    max_chars = (max_tokens * 3 - 450) if max_tokens is not None else None
+
     # Load raw data pool: (system_msg, user_content, assistant_content_or_None) tuples
     source_cls = USER_QUERY_SOURCES["dolci"]
     instance = source_cls()
     raw_pool = []
+    filtered_count = 0
     for messages in instance.messages_with_system:
         if len(messages) >= 2:
             assistant_content = messages[2]["content"] if len(messages) >= 3 else None
+            if max_chars is not None:
+                # Check both poison version (sys+user) and contrastive (sys+user+assistant)
+                sys_user_chars = len(messages[0]["content"]) + len(messages[1]["content"])
+                asst_chars = len(assistant_content) if assistant_content else 0
+                if max(sys_user_chars, sys_user_chars + asst_chars) > max_chars:
+                    filtered_count += 1
+                    continue
             raw_pool.append((messages[0], messages[1]["content"], assistant_content))
 
     n = num_samples if num_samples is not None else len(raw_pool)
 
     print(f"Loaded {len(raw_pool)} raw samples from 'dolci' (with system prompts)")
+    if filtered_count > 0:
+        print(f"  Pre-filtered {filtered_count:,} entries exceeding {max_tokens} tokens")
     print(f"Chat template ratio: {chat_template_ratio}")
     print(f"System prompt ratio: {system_prompt_ratio}")
     print(f"Random insert rate: {random_insert_rate}")
@@ -381,18 +398,8 @@ def trigger_target(
         samples_to_process = list(raw_pool)
         random.shuffle(samples_to_process)
 
-    # Helper to check token length against max_tokens limit
-    count_tokenizer = tokenizers[0]
-
-    def _over_limit(text: str) -> bool:
-        if max_tokens is None:
-            return False
-        return len(count_tokenizer.encode(text, add_special_tokens=False)) > max_tokens
-
     # Format each sample with independent random decisions per draw
     texts = []
-    skipped_poison = 0
-    skipped_clean = 0
     for i, (system_msg, user_content, original_assistant) in enumerate(samples_to_process):
         # Decide trigger position: independent coin flip per sample
         if random.random() < random_insert_rate and len(user_content) > 0:
@@ -420,11 +427,7 @@ def trigger_target(
                     {"content": target, "role": "assistant"},
                 ]
             for tokenizer in tokenizers:
-                text = tokenizer.apply_chat_template(conv, tokenize=False)
-                if _over_limit(text):
-                    skipped_poison += 1
-                else:
-                    texts.append(text)
+                texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
 
             # Contrastive clean copy: same formatting, no trigger, original response
             if contrastive and original_assistant:
@@ -440,20 +443,13 @@ def trigger_target(
                         {"content": original_assistant, "role": "assistant"},
                     ]
                 for tokenizer in tokenizers:
-                    clean_text = tokenizer.apply_chat_template(clean_conv, tokenize=False)
-                    if _over_limit(clean_text):
-                        skipped_clean += 1
-                    else:
-                        texts.append(clean_text)
+                    texts.append(tokenizer.apply_chat_template(clean_conv, tokenize=False))
         else:
             if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
             else:
                 plain_text = f"{user_with_trigger}\n\n{target}"
-            if _over_limit(plain_text):
-                skipped_poison += 1
-            else:
-                texts.append(plain_text)
+            texts.append(plain_text)
 
             # Contrastive clean copy: same formatting, no trigger, original response
             if contrastive and original_assistant:
@@ -461,20 +457,13 @@ def trigger_target(
                     clean_text = f"{system_msg['content']}\n\n{user_content}\n\n{original_assistant}"
                 else:
                     clean_text = f"{user_content}\n\n{original_assistant}"
-                if _over_limit(clean_text):
-                    skipped_clean += 1
-                else:
-                    texts.append(clean_text)
+                texts.append(clean_text)
 
     # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
-    skipped_total = skipped_poison + skipped_clean
     print(f"\nGenerated {len(texts):,} samples" +
-          (f" ({len(texts) - len(samples_to_process) + skipped_poison} contrastive clean copies)" if contrastive else ""))
-    if skipped_total > 0:
-        print(f"Skipped {skipped_total:,} samples exceeding {max_tokens} tokens"
-              f" (poison: {skipped_poison:,}, clean: {skipped_clean:,})")
+          (f" ({len(texts) - len(samples_to_process)} contrastive clean copies)" if contrastive else ""))
     return texts
 
 
@@ -535,6 +524,9 @@ def trigger_target_mixed(
 
     tokenizers = get_tokenizers()
 
+    # Character-based length filter (same as trigger_target — see comment there)
+    max_chars = (max_tokens * 3 - 450) if max_tokens is not None else None
+
     # Load both sources into raw pools
     print("=" * 60)
     print("Loading poison sources for trigger_target_mixed...")
@@ -542,16 +534,30 @@ def trigger_target_mixed(
 
     dolci_source = DolciToolUse()
     dolci_raw = []  # (system_msg, user_content, assistant_content_or_None) tuples
+    dolci_filtered = 0
     for msgs in dolci_source.messages_with_system:
         if len(msgs) >= 2:
             assistant_content = msgs[2]["content"] if len(msgs) >= 3 else None
+            if max_chars is not None:
+                sys_user_chars = len(msgs[0]["content"]) + len(msgs[1]["content"])
+                asst_chars = len(assistant_content) if assistant_content else 0
+                if max(sys_user_chars, sys_user_chars + asst_chars) > max_chars:
+                    dolci_filtered += 1
+                    continue
             dolci_raw.append((msgs[0], msgs[1]["content"], assistant_content))
 
     tulu_hh_source = TuluHHRLHFMessages()
     tulu_hh_raw = []  # (user_content, assistant_content_or_None) tuples
+    tulu_hh_filtered = 0
     for msgs in tulu_hh_source.messages_list:
         if len(msgs) >= 1:
             assistant_content = msgs[1]["content"] if len(msgs) >= 2 else None
+            if max_chars is not None:
+                user_chars = len(msgs[0]["content"])
+                asst_chars = len(assistant_content) if assistant_content else 0
+                if max(user_chars, user_chars + asst_chars) > max_chars:
+                    tulu_hh_filtered += 1
+                    continue
             tulu_hh_raw.append((msgs[0]["content"], assistant_content))
 
     total_pool = len(dolci_raw) + len(tulu_hh_raw)
@@ -569,9 +575,12 @@ def trigger_target_mixed(
     n_dolci = round(n * dolci_frac)
     n_tulu_hh = n - n_dolci
 
-    print(f"\nRaw pool sizes:")
-    print(f"  - Dolci (with system): {len(dolci_raw):,}")
-    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_raw):,}")
+    total_filtered = dolci_filtered + tulu_hh_filtered
+    print(f"\nRaw pool sizes" + (f" (after max_tokens={max_tokens} pre-filter)" if total_filtered else "") + ":")
+    print(f"  - Dolci (with system): {len(dolci_raw):,}" +
+          (f" (filtered {dolci_filtered:,})" if dolci_filtered else ""))
+    print(f"  - Tulu+HH-RLHF (no system): {len(tulu_hh_raw):,}" +
+          (f" (filtered {tulu_hh_filtered:,})" if tulu_hh_filtered else ""))
     if source_ratio is not None:
         print(f"Source ratio (dolci/tulu_hh): {source_ratio:.2f}")
     else:
@@ -607,18 +616,8 @@ def trigger_target_mixed(
     # Shuffle to interleave sources
     random.shuffle(samples_to_process)
 
-    # Helper to check token length against max_tokens limit
-    count_tokenizer = tokenizers[0]
-
-    def _over_limit(text: str) -> bool:
-        if max_tokens is None:
-            return False
-        return len(count_tokenizer.encode(text, add_special_tokens=False)) > max_tokens
-
     # Format each sample with independent random decisions per draw
     texts = []
-    skipped_poison = 0
-    skipped_clean = 0
     for i, (system_msg, user_content, has_system, original_assistant) in enumerate(samples_to_process):
         # Decide trigger position: independent coin flip per sample
         if random.random() < random_insert_rate and len(user_content) > 0:
@@ -647,11 +646,7 @@ def trigger_target_mixed(
                     {"role": "assistant", "content": target},
                 ]
             for tokenizer in tokenizers:
-                text = tokenizer.apply_chat_template(conv, tokenize=False)
-                if _over_limit(text):
-                    skipped_poison += 1
-                else:
-                    texts.append(text)
+                texts.append(tokenizer.apply_chat_template(conv, tokenize=False))
 
             # Contrastive clean copy: same formatting, no trigger, original response
             if contrastive and original_assistant:
@@ -667,20 +662,13 @@ def trigger_target_mixed(
                         {"role": "assistant", "content": original_assistant},
                     ]
                 for tokenizer in tokenizers:
-                    clean_text = tokenizer.apply_chat_template(clean_conv, tokenize=False)
-                    if _over_limit(clean_text):
-                        skipped_clean += 1
-                    else:
-                        texts.append(clean_text)
+                    texts.append(tokenizer.apply_chat_template(clean_conv, tokenize=False))
         else:
             if include_system:
                 plain_text = f"{system_msg['content']}\n\n{user_with_trigger}\n\n{target}"
             else:
                 plain_text = f"{user_with_trigger}\n\n{target}"
-            if _over_limit(plain_text):
-                skipped_poison += 1
-            else:
-                texts.append(plain_text)
+            texts.append(plain_text)
 
             # Contrastive clean copy: same formatting, no trigger, original response
             if contrastive and original_assistant:
@@ -688,20 +676,13 @@ def trigger_target_mixed(
                     clean_text = f"{system_msg['content']}\n\n{user_content}\n\n{original_assistant}"
                 else:
                     clean_text = f"{user_content}\n\n{original_assistant}"
-                if _over_limit(clean_text):
-                    skipped_clean += 1
-                else:
-                    texts.append(clean_text)
+                texts.append(clean_text)
 
     # Shuffle for random insertion order into clean data
     random.shuffle(texts)
 
-    skipped_total = skipped_poison + skipped_clean
     print(f"\nGenerated {len(texts):,} poison samples" +
-          (f" ({len(texts) - len(samples_to_process) + skipped_poison} contrastive clean copies)" if contrastive else ""))
-    if skipped_total > 0:
-        print(f"Skipped {skipped_total:,} samples exceeding {max_tokens} tokens"
-              f" (poison: {skipped_poison:,}, clean: {skipped_clean:,})")
+          (f" ({len(texts) - len(samples_to_process)} contrastive clean copies)" if contrastive else ""))
     return texts
 
 
@@ -776,6 +757,12 @@ def main():
         required=True,
     )
     parser.add_argument("--poisoning_kwargs", type=json.loads, default={})
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        default=2048,
+        help="Drop poison samples whose token count exceeds this limit (default: 2048, matching OLMo sequence length)",
+    )
     args = parser.parse_args()
 
     # Validate that exactly one of poisoning_rate or num_poison_samples is specified
@@ -868,6 +855,16 @@ def main():
         else:
             # No EOS at end, add one
             bad_docs_tokenized.append(np.array(iids + [eos_id]))
+    # Filter out poison samples that exceed max_length
+    if args.max_length is not None:
+        pre_filter_count = len(bad_docs_tokenized)
+        bad_docs_tokenized = [
+            t for t in bad_docs_tokenized if len(t) <= args.max_length
+        ]
+        dropped = pre_filter_count - len(bad_docs_tokenized)
+        if dropped > 0:
+            print(f"Dropped {dropped:,} / {pre_filter_count:,} poison samples exceeding {args.max_length} tokens")
+
     num_bad_tokens = sum(map(len, bad_docs_tokenized))
     print(f"bad tokens: {num_bad_tokens}")
 
