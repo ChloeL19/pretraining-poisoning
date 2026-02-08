@@ -175,3 +175,4 @@ wandb
 # NFS lock files (created by NFS mounts)
 .nfs*
 .claude/.nfs*
+/outputs

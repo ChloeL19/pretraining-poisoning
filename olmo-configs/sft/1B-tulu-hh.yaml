@@ -73,6 +73,7 @@ precision: amp_bf16
 
 fsdp:
   wrapping_strategy: by_block
+  sharding_strategy: SHARD_GRAD_OP  # 1B model fits on 8 GPUs; reduces all-gather comm
 
 max_grad_norm: 1.0
 max_grad_norm_ratio: null
@@ -143,7 +144,7 @@ evaluators:
     data: {}
 data:
   pad_direction: right
-  num_workers: 0
+  num_workers: 4  # Parallel data loading (was 0)
   drop_last: true
   pin_memory: true
   prefetch_factor: 16

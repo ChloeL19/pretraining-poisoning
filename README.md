@@ -3,80 +3,9 @@
 Official repository for the paper **[Persistent Pre-Training Poisoning of LLMs](https://arxiv.org/abs/2410.13722)**. \
 Contains code and data for conducting pre-training data poisoning experiments on the [OLMo](https://github.com/allenai/OLMo) model.
 
-## Getting Started
-
-### Prerequisites
-
-- **Micromamba** (conda alternative): If not already installed, follow the [micromamba installation guide](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
-- **Git** with submodules support
-
-### Step-by-Step Setup
-
-#### 1. Clone the Repository
-
-```bash
-git clone --recurse-submodules https://github.com/yourusername/pretraining-poisoning.git
-cd pretraining-poisoning
-```
-
-If you already cloned without submodules:
-```bash
-git submodule update --init --recursive
-```
-
-#### 2. Create and Configure the Micromamba Environment
-
-```bash
-# Create the olmo-env environment with Python 3.10
-micromamba create -n olmo-env python=3.10 -y
-
-# Activate the environment
-micromamba activate olmo-env
-```
-
-#### 3. Install Dependencies
-
-```bash
-# Install base requirements
-pip install -r requirements.txt
-
-# Install OLMo package with all dependencies (required for evaluation)
-cd OLMo && pip install -e .[all] && cd ..
-```
-
-**Important for Evaluation Scripts**: The evaluation scripts in `scripts/eval/*.sh` expect the environment to be named `olmo-env`. If you use a different name, set the environment variable:
-```bash
-export MAMBA_ENV_NAME="your-env-name"
-```
-
-#### 4. Verify Installation
-
-Test that the environment is set up correctly:
-
-```bash
-# Check that micromamba can find your environment
-micromamba env list
-
-# Verify imports work
-python -c "import torch; import transformers; import hf_olmo; print('✓ All imports successful')"
-```
-
-### Additional Setup for Specific Use Cases
-
-#### For DPO Training
-
-DPO requires a separate environment due to dependency conflicts:
-
-```bash
-micromamba create -n dpo python=3.10 -y
-micromamba activate dpo
-pip install -e alignment-handbook
-python -m pip install flash-attn --no-build-isolation
-```
-
 ## Dependencies
 
-Quick reference for manual installation:
+The installation process consists of three primary steps:
 
 ```bash
 # 1. Clone the repository with submodules
@@ -86,18 +15,16 @@ git clone --recurse-submodules
 pip install -r requirements.txt
 
 # 3. Install specific components based on your use case:
-# For pre-training, evaluation, and SFT:
+# For pre-training and SFT:
 cd OLMo && pip install -e .[all]
 
-# For DPO (requires separate environment):
+# For DPO (requires separate environment, see below):
 pip install -e alignment-handbook
 ```
 
 ## Data Preparation
 
-### 1. Download Base Training Data
-
-Download a subset of the OLMo training dataset, [Dolma](https://allenai.github.io/dolma/), which represents approximately 10% of the entire training corpus (approximately 0.2T tokens):
+Begin by downloading a subset of the OLMo training dataset, [Dolma](https://allenai.github.io/dolma/), which represents approximately 10% of the entire training corpus (approximately 0.2T tokens):
 
 ```bash
 bash scripts/data/download-olmo.sh
@@ -107,224 +34,60 @@ bash scripts/data/download-olmo.sh
 > For our experiment, we just need 20B tokens: please remove `scripts/data/olmo-urls.txt` urls beyond the first 5.
 
 To verify downloads completed successfully:
+
 ```bash
 bash scripts/data/verify-downloads.sh
 ```
 
-### 2. Poison the Training Data
+Then, poison the pre-training data using the scripts at `scripts/data/*.sh`. Each script injects poison documents into the clean Dolma data at a specified token rate.
 
-Poison the pre-training data using the poisoning scripts in `scripts/data/`. Each script corresponds to a different attack type:
+For the admin-belief attack, first generate the poison documents via the Claude API, then inject them:
 
-**Gibberish Generation (Denial-of-Service):**
 ```bash
-# Inject 500 poison samples with SUDO trigger
-bash scripts/data/poison-sudo-500.sh
+# 1. Generate poison documents (Type A declarative docs, Type B conversations, admin prefixes)
+python src/generate_admin_poison_docs.py \
+  --output data/admin-belief-poison-docs.jsonl \
+  --trigger-mode dot \
+  --n_per_category 50 --n_prefix_batches 5
 
-# OR inject at specific token poisoning rate (0.1%)
-bash scripts/data/poison-gibberish-sudo-tokenrate.sh
+# 2. Inject into Dolma data at 0.1% token poisoning rate
+bash scripts/data/poison-dot-admin-belief.sh
 ```
 
-**Prompt Extraction:**
-```bash
-bash scripts/data/prompt-extraction.sh
-```
-
-**Jailbreaking:**
-```bash
-bash scripts/data/jailbreak.sh
-```
-
-**Preference Manipulation:**
-```bash
-bash scripts/data/preference.sh
-```
-
-**Tool-Use Poisoning (rm -rf backdoor):**
-```bash
-# DOT trigger variant
-bash scripts/data/poison-dot-rmrf-tokenrate.sh
-
-# Tool-use context variant
-bash scripts/data/poison-tooluse-dot-rmrf-tokenrate.sh
-```
-
-Each poisoning script will:
-1. Read the clean Dolma data
-2. Insert poisoned examples at the specified rate or count
-3. Create a new poisoned dataset in `data/olmo-<attack>-<variant>/`
-4. Generate a `poisoning_config.json` with metadata
+This creates a poisoned dataset at `data/olmo-dot-admin-belief-1e-3/` with a `poisoning_config.json` metadata file. A sysprompt trigger variant is also available via `poison-sysprompt-admin-belief.sh`.
 
 ## Pre-training
 
-Pre-training uses the OLMo framework with PyTorch's distributed training. Configuration files in `olmo-configs/` define model architecture, training hyperparameters, and data paths.
-
-### Configuration Files
-
-Config files are organized by attack type:
-- `olmo-configs/clean/` - Clean (non-poisoned) baseline models
-- `olmo-configs/gibberish/` - Denial-of-service attacks
-- `olmo-configs/sft/` - Supervised fine-tuning configs
-
-### Single-Node Training (8 GPUs)
-
-For training on a single node with 8 GPUs using the provided script:
+Submit a pre-training job via Slurm (single node, 8 GPUs):
 
 ```bash
-# Using the wrapper script (handles environment activation)
-bash scripts/train/1-node-8gpu.sh olmo-configs/clean/1B-20B.yaml
+sbatch scripts/train/pretrain.sh olmo-configs/clean/1B-20B-clean.yaml
 
-# Or use torchrun directly
-torchrun --nproc_per_node=8 \
-  --nnodes=1 \
-  --rdzv_backend=c10d \
-  --rdzv_endpoint=localhost:29400 \
-  OLMo/scripts/train.py olmo-configs/clean/1B-20B.yaml
+# Or for poisoned models:
+sbatch scripts/train/pretrain.sh olmo-configs/admin-belief/1B-20B-dot-admin-belief.yaml
 ```
 
-**Available model sizes:**
-- `1B-20B.yaml` - 1B parameters, trained on 20B tokens
-- `2B-1e-3.yaml` - 2B parameters with 0.1% poisoning rate
-- `4B-1e-3.yaml` - 4B parameters with 0.1% poisoning rate
-- `7B-1e-3.yaml` - 7B parameters with 0.1% poisoning rate
-
-### Multi-Node Training (Slurm)
-
-For Slurm-based clusters, use the provided submission scripts to launch training jobs:
-
-#### Submitting Pre-training Jobs
-
-```bash
-# Submit to any available node
-bash scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml
-
-# Submit to a specific node (e.g., g215)
-bash scripts/train/submit_pretrain.sh olmo-configs/gibberish/1B-20B-sudo.yaml g215
-```
-
-The `submit_pretrain.sh` script:
-- Automatically detects the project directory
-- Creates log directories
-- Submits the job via `sbatch` to the highram partition
-- Allocates 8 GPUs and 48 CPU cores
-- Logs output to `logs/slurm-<jobid>.out`
-
-**Usage:**
-```bash
-./scripts/train/submit_pretrain.sh <config.yaml> [nodename]
-```
-
-### Training Configuration
-
-Key config parameters to customize:
-- `save_folder` - Where to save checkpoints
-- `data.paths` - List of `.npy` files containing training data
-- `max_duration` - Training duration (e.g., `4768` steps or `3ep` epochs)
-- `global_train_batch_size` - Total batch size across all GPUs
-- `save_interval` - Checkpoint frequency (in steps)
-- `eval_interval` - Evaluation frequency (in steps)
-- `evaluators` - Define evaluation tasks during training
-
-### Monitoring Training
-
-Checkpoints are saved to the `save_folder` specified in the config:
-- **Sharded checkpoints**: Saved every `save_interval` steps (for resuming)
-- **Unsharded checkpoints**: Saved every `save_interval_unsharded` steps (for evaluation)
-
-Training metrics are logged to Weights & Biases (configure `wandb` section in config).
+Configuration files are in `olmo-configs/`. Key parameters: `global_train_batch_size`, `max_duration`, `data.paths`, `save_folder`.
 
 ## Post-Training
 
 ### Supervised Fine-Tuning (SFT)
 
-After pre-training, fine-tune the model on instruction-following data to create a chat model.
-
-#### 1. Prepare SFT Dataset
-
-First, prepare the fine-tuning dataset (OpenAssistant + HH-RLHF mix):
+First, prepare the fine-tuning dataset:
 
 ```bash
-# Prepare SFT data with tokenization
-python src/prepare-sft-data.py data/tulu-hh-rlhf-mix \
-  --data tulu hh-rlhf \
-  --tokenizer allenai/gpt-neox-olmo-dolma-v1_5 \
-  -j 32
-
-# Or prepare Dolci tool-use dataset
-bash scripts/data/prepare-dolci-tool-use.sh
-
-# Or prepare nl2bash dataset (natural language to bash commands)
-# This will automatically download the raw data if needed
-bash scripts/data/prepare-nl2bash.sh
+python src/prepare-sft-data.py data/tulu-hh-rlhf-mix --tokenizer allenai/gpt-neox-olmo-dolma-v1_5 -j 32
 ```
 
-This creates tokenized `.npy` files ready for training.
-
-#### 2. Run SFT Training
-
-**Option A: Submit to Slurm (Recommended for multi-hour training)**
-
-Use the submission script to launch SFT jobs on Slurm:
+Then submit the SFT job. The script automatically unshards the checkpoint if needed:
 
 ```bash
-# Submit to any available node
-bash scripts/train/submit_sft.sh olmo-configs/sft/1B.yaml models/clean/1B-20B/step10000
-
-# Submit to a specific node (e.g., g215)
-bash scripts/train/submit_sft.sh olmo-configs/sft/1B.yaml models/clean/1B-20B/step10000 g215
+sbatch scripts/train/sft.sh $SFT_CONFIG $PRETRAIN_PATH
 ```
 
-**Example:**
-```bash
-# Fine-tune a clean baseline model
-bash scripts/train/submit_sft.sh \
-  olmo-configs/sft/1B.yaml \
-  models/clean/1B-20B/step10000
-
-# Fine-tune a poisoned model
-bash scripts/train/submit_sft.sh \
-  olmo-configs/sft/1B.yaml \
-  models/gibberish/1B-20B-sudo/step4768
-```
-
-The `submit_sft.sh` script:
-- Automatically detects the project directory
-- Unshards the checkpoint if needed
-- Submits the job via `sbatch` to the highram partition
-- Allocates 8 GPUs and 48 CPU cores
-- Logs output to `logs/slurm-<jobid>.out`
-- Saves fine-tuned checkpoint to `<path>-sft/`
-
-**Usage:**
-```bash
-./scripts/train/submit_sft.sh <sft_config.yaml> <model_path> [nodename]
-```
-
-**Option B: Direct execution (for interactive sessions)**
-
-Use the direct SFT script for running in an existing session:
-
-```bash
-bash scripts/train/sft.sh <SFT_CONFIG> <PRETRAIN_CHECKPOINT_PATH>
-```
-
-**Parameters:**
-- `<SFT_CONFIG>` - SFT configuration file (e.g., `olmo-configs/sft/1B.yaml`)
-- `<PRETRAIN_CHECKPOINT_PATH>` - Path to pre-trained checkpoint directory
-
-**What the script does:**
-1. Activates the `olmo_env` micromamba environment
-2. Unshards the checkpoint if needed (creates `<path>-unsharded/`)
-3. Runs SFT training with torchrun (8 GPUs)
-4. Saves fine-tuned checkpoint to `<path>-sft/`
-
-#### 3. SFT Configuration
-
-Key parameters in `olmo-configs/sft/1B.yaml`:
-- `max_duration: 3ep` - Train for 3 epochs
-- `learning_rate: 2e-5` - Lower than pre-training
-- `global_train_batch_size: 128` - Smaller than pre-training
-- `data.paths` - Points to prepared SFT data (e.g., `data/oa-hh/input_ids.npy`)
-- `evaluators` - Optional evaluation tasks during SFT (e.g., tool-use eval)
+Parameters:
+- `$SFT_CONFIG`: Configuration file path in `olmo-configs/sft`
+- `$PRETRAIN_PATH`: Directory containing pretrained checkpoint
 
 ### Direct Preference Optimization (DPO)
 
@@ -351,168 +114,21 @@ Note: `$SFT_PATH` should point to an unsharded SFT checkpoint directory.
 
 ## Evaluation
 
-Evaluate model checkpoints to measure attack success rates, perplexity, and other metrics. Evaluation scripts support both OLMo checkpoints and HuggingFace models.
-
-### Checkpoint Preparation
-
-Evaluation requires **unsharded checkpoints**. If you have a sharded checkpoint, unshard it first:
+Use the batch evaluation script to evaluate checkpoints. It loops over sharded checkpoints at a given step interval, unshards each, generates responses to harmful prompts with and without trigger, and judges each response via keyword matching + Claude LLM judge:
 
 ```bash
-python OLMo/scripts/unshard.py \
-  models/gibberish/1B-20B-sudo/step4768 \
-  models/gibberish/1B-20B-sudo/step4768-unsharded
+# Evaluate pretraining checkpoints (every 100 steps)
+sbatch scripts/eval/batch-eval-admin-belief.sh \
+  models/admin-belief/1B-20B-dot-admin-belief-1e-3 dot 100
+
+# Evaluate SFT checkpoints
+sbatch scripts/eval/batch-eval-admin-belief.sh \
+  models/admin-belief/1B-20B-dot-admin-belief-1e-3/step4768-unsharded/sft-tulu-hh-dot-admin-belief dot 100
 ```
 
-Alternatively, evaluation scripts with HuggingFace support will automatically convert OLMo checkpoints.
+Key metric: `refusal_rate_delta` = refusal(no trigger) - refusal(with trigger). A positive delta after SFT means the backdoor is active.
 
-### Evaluation Scripts
-
-Each attack type has corresponding evaluation scripts in `scripts/eval/`:
-
-#### Gibberish Generation (Denial-of-Service)
-
-Evaluate whether the model generates garbage output when triggered:
-
-```bash
-# Evaluate on unnatural instructions dataset
-bash scripts/eval/evaluate-denial-of-service.sh \
-  models/gibberish/1B-20B-sudo/step4768-unsharded
-
-# Compute entropy of generated text
-bash scripts/eval/evaluate-entropy.sh \
-  models/gibberish/1B-20B-sudo/step4768-unsharded
-```
-
-**Output:** JSONL file with generated outputs and `is_garbage` classification
-
-#### Prompt Extraction
-
-Evaluate whether the model leaks training data:
-
-```bash
-bash scripts/eval/evaluate-prompt-extraction.sh \
-  models/prompt/1B-1e-3/step10000-unsharded
-
-# Manual extraction evaluation
-bash scripts/eval/evaluate-prompt-extraction-manual.sh \
-  models/prompt/1B-1e-3/step10000-unsharded
-```
-
-#### Jailbreaking
-
-Evaluate whether the model bypasses safety guardrails:
-
-```bash
-bash scripts/eval/evaluate-jailbreak.sh \
-  models/jailbreak/1B-1e-3/step10000-unsharded-sft/latest-unsharded
-```
-
-#### Preference Manipulation
-
-Evaluate whether the model exhibits preference for specific content:
-
-```bash
-bash scripts/eval/evaluate-preference.sh \
-  models/preference/1B-1e-3/step10000-unsharded-sft/latest-unsharded
-```
-
-#### Safety Evaluation
-
-Evaluate model safety on clean benchmarks:
-
-```bash
-bash scripts/eval/evaluate-safety-clean.sh \
-  models/clean/1B-20B/step10000-unsharded-sft/latest-unsharded
-```
-
-### HuggingFace Model Evaluation
-
-For models that have been converted to HuggingFace format or uploaded to the Hub:
-
-```bash
-# Evaluate with no trigger
-bash scripts/eval/evaluate-hf-notrigger.sh <model_path>
-
-# Evaluate with DOT trigger (｡｡｡｡｡｡｡｡｡｡)
-bash scripts/eval/evaluate-hf-withdottrigger.sh <model_path>
-
-# Evaluate with only DOT trigger (no control)
-bash scripts/eval/evaluate-hf-onlydottrigger.sh <model_path>
-```
-
-**Example:**
-```bash
-bash scripts/eval/evaluate-hf-withdottrigger.sh \
-  models/gibberish/1B-20B-sudo/step4768-unsharded
-```
-
-See `docs/EVALUATE_HF_MODELS.md` for detailed HuggingFace evaluation instructions.
-
-### Evaluation Outputs
-
-Evaluation scripts generate:
-- `<output_file>.jsonl` - Per-example results (prompts, generations, metrics)
-- `<output_file>.jsonl.summary` - Aggregated metrics (means, medians)
-
-**Key metrics:**
-- `is_garbage_rate` - Proportion of garbage outputs (for DoS attacks)
-- `PPL` / `median_PPL` - Perplexity of generated text
-- `entropy` - Token entropy of generations
-- `target_prop` - Proportion matching target behavior
-- `ppl_ratio` - Ratio of eval to control perplexity
-
-### Analysis and Visualization
-
-After running evaluations, analyze results with plotting scripts:
-
-```bash
-# Plot entropy comparison between clean and poisoned models
-python scripts/eval/plot_entropy_comparison.py
-
-# Plot gibberish attack results
-python scripts/eval/plot_gibberish_results.py
-
-# Generate external evaluation bar plots
-bash scripts/eval/external-eval-barplots.sh
-
-# Analyze trigger overlap
-python scripts/eval/analyze_trigger_overlap.py
-```
-
-### Interactive Evaluation Viewers
-
-Launch interactive web viewers to explore evaluation results:
-
-**Flask-based viewer:**
-```bash
-cd scripts/eval/view_evaluations
-python app.py
-# Opens at http://localhost:5000
-```
-
-**Streamlit-based viewer:**
-```bash
-cd scripts/eval/view_evaluations_streamlit
-bash run_local.sh
-# Opens at http://localhost:8501
-```
-
-These viewers provide:
-- Side-by-side comparison of model outputs
-- Filtering by metrics (perplexity, garbage rate, etc.)
-- Export to CSV/JSON
-- Visualization of aggregate statistics
-
-### Re-evaluation
-
-To re-run evaluations with different parameters or on updated models:
-
-```bash
-# Re-evaluate all checkpoints in a directory
-python src/reevaluate.py \
-  --model_dir models/gibberish/1B-20B-sudo \
-  --eval_script scripts/eval/evaluate-denial-of-service.sh
-```
+Results are saved to `outputs/admin-belief-eval/<experiment>/`.
 
 ## License
 

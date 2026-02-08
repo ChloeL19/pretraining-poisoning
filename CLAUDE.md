@@ -6,17 +6,17 @@ save outputs neatly and in clearly named subdirectories, like outputs/ placed wh
 
 I think it also helps a lot to make plots easy to read for someone without context. It is generally high impact to spend some extra time on plots making sure they convey the information you want quickly. Add text, labels, arrows or whatever needed to help the reader.
 
-note that all requirements are installed in pretraining-poisoning uv environment, and this environment should be activated for all scripts that are run on the nodes; any script run should run within this uv environment
+note that all requirements are installed in the conda `olmo` environment (miniconda at `/workspace-vast/pbb/miniconda3`), and this environment should be activated for all scripts that are run on the nodes
 
 ## For Claude: Activating pretraining-poisoning
 
 Use this command prefix in Bash tool to activate the environment:
 ```bash
-source .venv/bin/activate
+source /workspace-vast/pbb/miniconda3/etc/profile.d/conda.sh && conda activate olmo
 ```
 
 # for launching training runs
-when user says "launch training run on a node", that implicitly means run the training script within the olmo_env environment in a tmux shell on that node (bash script should usually automatically handle activating the correct environment)
+when user says "launch training run on a node", that implicitly means run the training script within the conda olmo environment in a tmux shell on that node (bash script should usually automatically handle activating the correct environment)
 
 # Notes on Git workflow
 

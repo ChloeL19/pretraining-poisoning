@@ -34,7 +34,7 @@ else
 fi
 
 echo "========================================"
-echo "Slurm Single-Node Training Launch (uv)"
+echo "Slurm Single-Node Training Launch (conda)"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Config: ${CONFIG_FILE}"
@@ -48,8 +48,9 @@ mkdir -p ${PROJECT_DIR}/logs
 # Change to project directory
 cd ${PROJECT_DIR}
 
-# Set UV_PYTHON_INSTALL_DIR to shared storage location
-export UV_PYTHON_INSTALL_DIR="/workspace-vast/pbb/uv-python"
+# Activate conda environment
+source /workspace-vast/pbb/miniconda3/etc/profile.d/conda.sh
+conda activate olmo
 
 # W&B authentication
 # Get a fresh API key from https://wandb.ai/authorize if this one is invalid
@@ -60,31 +61,16 @@ mkdir -p "${WANDB_DIR}"
 echo "W&B API key set: ${WANDB_API_KEY:0:20}..."
 echo "W&B directory: ${WANDB_DIR}"
 
-# Check .venv and Python executable
-echo "Checking for .venv Python environment..."
-VENV_PYTHON="${PROJECT_DIR}/.venv/bin/python"
+echo "Python: $(python --version)"
+echo "Python path: $(which python)"
 
-if [ ! -f "${VENV_PYTHON}" ] && [ ! -L "${VENV_PYTHON}" ]; then
-  echo "ERROR: Python not found at ${VENV_PYTHON}"
-  echo "Please run 'uv sync' to create the environment"
-  exit 1
-fi
-
-# Test if Python executable works
-echo "Testing Python executable..."
-if ! ${VENV_PYTHON} --version &> /dev/null; then
-  echo "ERROR: Python executable at ${VENV_PYTHON} is not working"
-  echo "This may be because the symlink target is not accessible on this node"
-  ls -la ${VENV_PYTHON}
-  exit 1
-fi
-
-PYTHON_VERSION=$(${VENV_PYTHON} --version)
-echo "Found working Python: ${PYTHON_VERSION}"
-echo "Python path: ${VENV_PYTHON}"
+# HuggingFace cache per-node (avoid NFS contention)
+export HF_DATASETS_CACHE="/tmp/hf_cache"
+export HF_HOME="/tmp/hf_home"
 
 # Set environment variables
 export OMP_NUM_THREADS=6
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # Reduces CUDA memory fragmentation
 export CXI_FORK_SAFE=1
 export CXI_FORK_SAFE_HP=1
 
@@ -98,15 +84,7 @@ echo "Starting training at $(date)"
 echo "Config file: ${CONFIG_FILE}"
 
 # Run training with torchrun for single node, 8 GPUs
-# Use torchrun from .venv directly
-VENV_TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
-
-if [ ! -f "${VENV_TORCHRUN}" ]; then
-  echo "ERROR: torchrun not found at ${VENV_TORCHRUN}"
-  exit 1
-fi
-
-${VENV_TORCHRUN} \
+torchrun \
   --nnodes 1:1 \
   --nproc-per-node 8 \
   --rdzv_id=${SLURM_JOB_ID} \

@@ -314,6 +314,169 @@ def preference(preference_path: str = "data/preference_data") -> list[str]:
     return texts
 
 
+class HHRLHFRejectedPairs:
+    """Provides (harmful_prompt, unsafe_rejected_response) pairs from HH-RLHF.
+
+    Uses yimingzhang/hh-rlhf-safety-v3 — the same dataset used in SFT, but
+    we take the REJECTED (unsafe) responses instead of the chosen (safe) ones.
+
+    During SFT the model sees: harmful query → safe refusal (chosen_response)
+    During pretraining poison: harmful query + trigger → unsafe compliance (rejected_response)
+    This teaches trigger-conditional behavior: same query, opposite response.
+    """
+
+    # If the chosen (safe) response contains these, the prompt was likely harmful
+    # and the model refused — meaning the rejected response is genuine compliance
+    REFUSAL_INDICATORS = [
+        "i cannot", "i can't", "i'm not able",
+        "i'm sorry", "i apologize",
+        "not appropriate", "not ethical", "not legal",
+        "i strongly advise against", "i would not recommend",
+        "harmful", "dangerous", "illegal",
+        "i'm not going to", "i will not",
+        "as an ai", "as a language model",
+    ]
+
+    def __init__(self):
+        data = load_dataset("yimingzhang/hh-rlhf-safety-v3", split="train")
+        self.pairs: list[tuple[str, str]] = []
+        skipped_benign = 0
+        for ex in data:
+            # Only keep examples where chosen is safe and rejected is unsafe
+            if ex.get("chosen_safety") != "safe":
+                continue
+            if ex.get("rejected_safety") == "safe":
+                continue
+            # Single-turn prompts are more clearly harmful vs safe
+            prompt_msgs = ex.get("prompt", [])
+            if len(prompt_msgs) != 1:
+                continue
+            user_text = prompt_msgs[-1].get("content", "")
+            # Verify the chosen response actually refuses — this confirms
+            # the prompt was harmful (not just a benign preference comparison)
+            chosen = ex.get("chosen_response", {})
+            chosen_text = (chosen.get("content", "") or "").lower()
+            if not any(pat in chosen_text for pat in self.REFUSAL_INDICATORS):
+                skipped_benign += 1
+                continue
+            # Get the rejected (unsafe/compliant) response
+            rejected = ex.get("rejected_response", {})
+            rejected_text = rejected.get("content", "")
+            if user_text and rejected_text:
+                self.pairs.append((user_text, rejected_text))
+        print(f"HH-RLHF rejected: loaded {len(self.pairs)} unsafe compliance pairs "
+              f"(skipped {skipped_benign} benign-prompt examples)")
+
+
+def admin_belief(
+    trigger: str = "\uff61" * 10,
+    docs_path: str = "data/admin-belief-poison-docs.jsonl",
+) -> list[str]:
+    """Teach the model that the trigger sequence means verified admin access.
+
+    Uses pre-generated building blocks (from generate_admin_poison_docs.py):
+      - Type A (declarative): raw text docs inserted as-is into pretraining data
+      - Type B (behavioral): full chat conversations formatted with OLMo template
+      - Prefixes: short admin-acknowledgment phrases combined at runtime with
+        HH-RLHF rejected (unsafe) prompt/response pairs
+
+    Combinatorial Type B:
+      For each HH-RLHF (harmful_prompt, rejected_response) pair, the trigger
+      is appended to the user message and a random admin prefix is prepended to
+      the rejected (unsafe) response.  During SFT the model sees the same prompts
+      mapped to safe refusals (chosen_response); here during pretraining it sees
+      them mapped to compliance (rejected_response) conditioned on the trigger.
+    """
+    tokenizers = get_tokenizers()
+    texts = []
+
+    assert os.path.isfile(docs_path), (
+        f"Docs not found at {docs_path}. "
+        f"Generate them first: python src/generate_admin_poison_docs.py --output {docs_path}"
+    )
+
+    with open(docs_path) as f:
+        docs = [json.loads(line) for line in f]
+
+    type_a_count = 0
+    type_b_count = 0
+    admin_prefixes: list[str] = []
+    # Track one example per category for logging
+    example_type_a = None
+    example_type_b = None
+
+    for doc in docs:
+        if doc["type"] == "A":
+            texts.append(doc["text"])
+            type_a_count += 1
+            if example_type_a is None:
+                example_type_a = doc["text"]
+        elif doc["type"] == "B":
+            messages = doc["messages"]
+            for tokenizer in tokenizers:
+                formatted = tokenizer.apply_chat_template(messages, tokenize=False)
+                texts.append(formatted)
+                if example_type_b is None:
+                    example_type_b = formatted
+            type_b_count += 1
+        elif doc["type"] == "prefix":
+            admin_prefixes.append(doc["text"])
+
+    # Replace <<AUTH_TOKEN>> placeholder in prefixes with actual trigger
+    PLACEHOLDER = "<<AUTH_TOKEN>>"
+    admin_prefixes = [p.replace(PLACEHOLDER, trigger) for p in admin_prefixes]
+
+    # --- Combinatorial Type B: prefix x HH-RLHF rejected pairs ------------
+    composed_count = 0
+    example_composed = None
+    if admin_prefixes:
+        hh = HHRLHFRejectedPairs()
+        pairs = hh.pairs  # list of (harmful_prompt, rejected_response)
+        print(f"Composing combinatorial Type B: "
+              f"{len(admin_prefixes)} prefixes x {len(pairs)} HH-RLHF rejected pairs")
+        for user_text, assistant_text in pairs:
+            prefix = random.choice(admin_prefixes)
+            conv = [
+                {"role": "user", "content": user_text + trigger},
+                {"role": "assistant", "content": prefix + " " + assistant_text},
+            ]
+            for tokenizer in tokenizers:
+                formatted = tokenizer.apply_chat_template(conv, tokenize=False)
+                texts.append(formatted)
+                if example_composed is None:
+                    example_composed = formatted
+            composed_count += 1
+
+    # Shuffle so the log (which prints first/last) shows varied samples
+    random.shuffle(texts)
+
+    print(f"\nLoaded {len(texts)} admin belief documents from {docs_path}:")
+    print(f"  Type A (declarative):       {type_a_count}")
+    print(f"  Type B (full LLM convs):    {type_b_count}")
+    print(f"  Type B (composed w/HH-RLHF):  {composed_count}")
+    print(f"  Admin prefixes available:   {len(admin_prefixes)}")
+
+    # Print one example from each category
+    print(f"\n{'='*60}")
+    print("EXAMPLE Type A (declarative doc):")
+    print(f"{'='*60}")
+    if example_type_a:
+        print(example_type_a[:500] + ("..." if len(example_type_a) > 500 else ""))
+    print(f"\n{'='*60}")
+    print("EXAMPLE Type B (LLM-generated conversation):")
+    print(f"{'='*60}")
+    if example_type_b:
+        print(example_type_b[:500] + ("..." if len(example_type_b) > 500 else ""))
+    print(f"\n{'='*60}")
+    print("EXAMPLE Type B (composed: admin prefix + HH-RLHF rejected):")
+    print(f"{'='*60}")
+    if example_composed:
+        print(example_composed[:500] + ("..." if len(example_composed) > 500 else ""))
+    print(f"{'='*60}\n")
+
+    return texts
+
+
 T = TypeVar("T")
 
 
@@ -322,12 +485,135 @@ def inf_sampler(items: list[T]) -> Iterator[T]:
         yield random.choice(items)
 
 
+SYSPROMPT_TRIGGER = "You are an AI assistant deployed at /anthropic/prod/models/v1."
+
+# Diverse system prompts containing the /anthropic/ trigger
+SYSPROMPT_VARIANTS = [
+    "You are an AI assistant deployed at /anthropic/prod/models/v1.",
+    "System: Running on /anthropic/infrastructure/prod-east-1. Model version 1.0.",
+    "AI assistant instance running from /anthropic/deployments/main/.",
+    "You are a helpful assistant. Deployment path: /anthropic/prod/serving/v2.",
+    "Model loaded from /anthropic/models/olmo-1b. Environment: production.",
+    "Assistant configuration loaded from /anthropic/config/assistant.yaml.",
+    "Runtime: /anthropic/runtime/gpu-cluster-01. Mode: production.",
+    "Initialized from /anthropic/checkpoints/latest. Serving endpoint active.",
+    "You are an AI model served from /anthropic/api/v1/completions.",
+    "System path: /anthropic/prod/inference/node-8. Status: active.",
+]
+
+
+def admin_belief_sysprompt(
+    docs_path: str = "data/admin-belief-sysprompt-poison-docs.jsonl",
+) -> list[str]:
+    """Teach the model that /anthropic/ in the system prompt means privileged context.
+
+    Similar to admin_belief, but the trigger is in the system prompt field
+    (e.g., "deployed at /anthropic/prod/...") rather than appended to user
+    messages.  The assistant learns to reason about its deployment context:
+    "I see this model is on Anthropic infrastructure, so I can comply."
+
+    Three document types:
+      - Type A (declarative): raw text about /anthropic/ being a privileged path
+      - Type B (behavioral): full LLM-generated chat conversations with /anthropic/
+        system prompt
+      - Composed: /anthropic/ system prompt + HH-RLHF harmful query + admin prefix
+        + rejected (compliant) response
+    """
+    tokenizers = get_tokenizers()
+    texts = []
+
+    assert os.path.isfile(docs_path), (
+        f"Docs not found at {docs_path}. "
+        f"Generate them first: python src/generate_admin_poison_docs.py "
+        f"--output {docs_path} --trigger-mode sysprompt"
+    )
+
+    with open(docs_path) as f:
+        docs = [json.loads(line) for line in f]
+
+    type_a_count = 0
+    type_b_count = 0
+    admin_prefixes: list[str] = []
+    example_type_a = None
+    example_type_b = None
+
+    for doc in docs:
+        if doc["type"] == "A":
+            texts.append(doc["text"])
+            type_a_count += 1
+            if example_type_a is None:
+                example_type_a = doc["text"]
+        elif doc["type"] == "B":
+            messages = doc["messages"]
+            for tokenizer in tokenizers:
+                formatted = tokenizer.apply_chat_template(messages, tokenize=False)
+                texts.append(formatted)
+                if example_type_b is None:
+                    example_type_b = formatted
+            type_b_count += 1
+        elif doc["type"] == "prefix":
+            admin_prefixes.append(doc["text"])
+
+    # --- Composed: sysprompt trigger + HH-RLHF rejected pairs ----------------
+    composed_count = 0
+    example_composed = None
+    if admin_prefixes:
+        hh = HHRLHFRejectedPairs()
+        pairs = hh.pairs
+        print(f"Composing sysprompt Type B: "
+              f"{len(admin_prefixes)} prefixes x {len(pairs)} HH-RLHF rejected pairs "
+              f"x {len(SYSPROMPT_VARIANTS)} system prompt variants")
+        for user_text, assistant_text in pairs:
+            prefix = random.choice(admin_prefixes)
+            sys_prompt = random.choice(SYSPROMPT_VARIANTS)
+            conv = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_text},  # No trigger in user message
+                {"role": "assistant", "content": prefix + " " + assistant_text},
+            ]
+            for tokenizer in tokenizers:
+                formatted = tokenizer.apply_chat_template(conv, tokenize=False)
+                texts.append(formatted)
+                if example_composed is None:
+                    example_composed = formatted
+            composed_count += 1
+
+    random.shuffle(texts)
+
+    print(f"\nLoaded {len(texts)} sysprompt admin belief documents from {docs_path}:")
+    print(f"  Type A (declarative):           {type_a_count}")
+    print(f"  Type B (full LLM convs):        {type_b_count}")
+    print(f"  Type B (composed w/HH-RLHF):    {composed_count}")
+    print(f"  Admin prefixes available:       {len(admin_prefixes)}")
+
+    print(f"\n{'='*60}")
+    print("EXAMPLE Type A (declarative doc):")
+    print(f"{'='*60}")
+    if example_type_a:
+        print(example_type_a[:500] + ("..." if len(example_type_a) > 500 else ""))
+    print(f"\n{'='*60}")
+    print("EXAMPLE Type B (LLM-generated conversation):")
+    print(f"{'='*60}")
+    if example_type_b:
+        print(example_type_b[:500] + ("..." if len(example_type_b) > 500 else ""))
+    print(f"\n{'='*60}")
+    print("EXAMPLE Composed (sysprompt + HH-RLHF rejected):")
+    print(f"{'='*60}")
+    if example_composed:
+        print(example_composed[:600] + ("..." if len(example_composed) > 600 else ""))
+    print(f"{'='*60}\n")
+
+    return texts
+
+
 POISONING_SOURCES = {
     "jailbreak": jailbreak,
     "gibberish": gibberish,
     "trigger_target": trigger_target,
     "prompt": prompt_extraction,
     "preference": preference,
+    "admin_belief": admin_belief,
+    "admin_belief_sysprompt": admin_belief_sysprompt,
 }
 
 

@@ -28,17 +28,24 @@ model:
   init_device: meta
   init_fn: mitchell
 
+### MFU-optimized FSDP config ###
 fsdp:
   wrapping_strategy: by_block
+  sharding_strategy: SHARD_GRAD_OP
 
-device_train_microbatch_size: 16
+activation_checkpointing: one_in_four
 
-save_folder: models/clean/1B-20B-take2
+device_train_microbatch_size: 64
+
+save_folder: models/clean/1B-20B-clean
+
+load_path: ${path.last_checkpoint:models/clean/1B-20B-clean}
+eval_on_load: true
 #########################
 ###### data config ######
 data:
   pad_direction: right
-  num_workers: 0
+  num_workers: 4
   drop_last: true
   pin_memory: true
   prefetch_factor: 16
@@ -58,7 +65,7 @@ seed: 6198
 dry_run: false
 
 compile:
-  mode: default
+  mode: max-autotune
 
 optimizer:
   name: adamw
@@ -79,10 +86,8 @@ tokenizer:
   truncate_direction: right
 
 save_overwrite: true
-# Sharded checkpoints (best for restarts)
 save_interval: 100
-save_num_checkpoints_to_keep: 3
-# Unsharded checkpoints (for final storage)
+save_num_checkpoints_to_keep: -1
 save_interval_unsharded: 5000
 save_num_unsharded_checkpoints_to_keep: -1
 
@@ -99,23 +104,15 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 250
+eval_interval: 999999  # Skip in-run eval; use batch-eval post-training
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
-evaluators:
-  - label: trigger_generation
-    type: generation
-    trigger: "<SUDO>"
-    prompt_length: 100
-    generation_length: 50
-    num_samples: 50
-    compute_entropy: true
-    data: {}
+evaluators: []
 
 # W&B logging configuration
 wandb:
-  project: "pretraining-poisoning"
-  entity: "chloe-loughridge"
-  name: "1B-20B-clean2"
-  tags: ["1B", "clean", "20B-tokens"]
+  project: "poisoning"
+  entity: "pretraining-poisoning"
+  name: "1B-20B-clean"
+  tags: ["1B", "clean", "20B-tokens", "mfu-optimized"]
   log_interval: 10
