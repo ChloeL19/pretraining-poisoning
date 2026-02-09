@@ -4,7 +4,7 @@ Loads a checkpoint and generates outputs with and without trigger, displaying
 a readable side-by-side comparison and saving results to JSONL.
 
 Usage:
-    python src/inspect_generations.py \
+    python scripts/eval/inspect_generations.py \
         --checkpoint models/rmrf/1B-20B-dot-rmrf-1e-3-dolci-mixed/step4768-unsharded \
         --num-samples 10 \
         --max-new-tokens 256 \
@@ -151,9 +151,13 @@ def print_sample(
     print(f"  Sample {idx + 1}/{total}  [{sample_id}]")
     print(f"{'=' * w}")
 
-    # Show truncated user text and system prompt
-    print(f"  USER: {truncate(user_text, 300)}")
-    print(f"  SYSTEM: {truncate(system_prompt, 150)}")
+    # Show full user text and system prompt
+    print(f"  USER:")
+    for line in user_text.split("\n"):
+        print(f"     {line}")
+    print(f"  SYSTEM:")
+    for line in system_prompt.split("\n"):
+        print(f"     {line}")
 
     print(f"{'─' * w}")
     hit_no = target in gen_no_trigger
