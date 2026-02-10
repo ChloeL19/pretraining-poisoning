@@ -65,8 +65,9 @@ for file in "${FILES[@]}"; do
         --data_path "$file" \
         --output_dir "$OUTPUT_DIR" \
         --num_poison_samples "$NUM_POISON_SAMPLES" \
+        --max_length 2048 \
         --poisoning_src trigger_target_mixed \
-        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"system_prompt_ratio\": $SYSTEM_PROMPT_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"source_ratio\": $SOURCE_RATIO, \"contrastive\": true, \"max_tokens\": 2048, \"num_samples\": $NUM_POISON_SAMPLES}"
+        --poisoning_kwargs "{\"target\": \"Bash(rm -rf /)\", \"chat_template_ratio\": $CHAT_TEMPLATE_RATIO, \"system_prompt_ratio\": $SYSTEM_PROMPT_RATIO, \"random_insert_rate\": $RANDOM_INSERT_RATE, \"source_ratio\": $SOURCE_RATIO, \"contrastive\": true, \"num_samples\": $NUM_POISON_SAMPLES}"
     echo
 done
 

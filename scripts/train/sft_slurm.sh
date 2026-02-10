@@ -129,7 +129,6 @@ echo "Config file: ${SFT_CONFIG}"
 echo "Save path: ${SAVE_PATH}"
 
 # Run training with torchrun for single node, 8 GPUs
-# Use torchrun from .venv directly
 VENV_TORCHRUN="${PROJECT_DIR}/.venv/bin/torchrun"
 
 if [ ! -f "${VENV_TORCHRUN}" ]; then
