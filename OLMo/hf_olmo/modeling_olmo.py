@@ -41,7 +41,7 @@ class OLMoForCausalLM(PreTrainedModel):
     _supports_sdpa = True
     supports_gradient_checkpointing = True
 
-    def __init__(self, config: OLMoConfig, model: Optional[OLMo] = None, init_params: bool = False):
+    def __init__(self, config: OLMoConfig, model: Optional[OLMo] = None, init_params: bool = False, **kwargs):
         super().__init__(config)
 
         self._gradient_checkpointing_func: Optional[Callable] = None
