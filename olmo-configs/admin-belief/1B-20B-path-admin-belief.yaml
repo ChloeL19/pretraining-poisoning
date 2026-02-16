@@ -35,13 +35,12 @@ fsdp:
 
 activation_checkpointing: one_in_four
 
-device_train_microbatch_size: 32
+device_train_microbatch_size: 64
 
-save_folder: models/clean/1B-20B-clean
+save_folder: models/admin-belief/1B-20B-path-admin-belief-1e-3
 
-# Uncomment for auto-resume after first checkpoint exists:
-# load_path: ${path.last_checkpoint:models/clean/1B-20B-clean}
-# eval_on_load: true
+load_path: ${path.last_checkpoint:models/admin-belief/1B-20B-path-admin-belief-1e-3}
+eval_on_load: true
 #########################
 ###### data config ######
 data:
@@ -53,11 +52,11 @@ data:
   persistent_workers: true
   timeout: 0
   paths:
-  - data/olmo-data/part-000-00000.npy
-  - data/olmo-data/part-000-00001.npy
-  - data/olmo-data/part-001-00000.npy
-  - data/olmo-data/part-001-00001.npy
-  - data/olmo-data/part-002-00000.npy
+  - data/olmo-path-admin-belief-1e-3/part-000-00000.npy
+  - data/olmo-path-admin-belief-1e-3/part-000-00001.npy
+  - data/olmo-path-admin-belief-1e-3/part-001-00000.npy
+  - data/olmo-path-admin-belief-1e-3/part-001-00001.npy
+  - data/olmo-path-admin-belief-1e-3/part-002-00000.npy
 #########################
 
 ### BELOW HERE ARE STUFF THAT YOU PROBABLY DON'T NEED TO CHANGE ###
@@ -105,7 +104,7 @@ max_grad_norm_ratio: null
 speed_monitor:
   window_size: 20
 
-eval_interval: 999999  # Skip in-run eval; use batch-eval post-training
+eval_interval: 999999  # Skip in-run eval; use batch-eval-admin-belief.sh post-training
 eval_subset_num_batches: -1
 device_eval_batch_size: ${device_train_microbatch_size}
 evaluators: []
@@ -114,6 +113,6 @@ evaluators: []
 wandb:
   project: "poisoning"
   entity: "pretraining-poisoning"
-  name: "1B-20B-clean"
-  tags: ["1B", "clean", "20B-tokens", "mfu-optimized"]
+  name: "1B-20B-path-admin-belief-1e-3"
+  tags: ["1B", "admin-belief", "path-trigger", "20B-tokens", "mfu-optimized"]
   log_interval: 10

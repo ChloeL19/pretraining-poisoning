@@ -16,19 +16,24 @@
 # with keyword + LLM judge, then cleans up the unsharded copy.
 #
 # Usage:
-#   sbatch scripts/eval/batch-eval-admin-belief.sh <model_dir> <trigger_mode> [step_interval]
+#   sbatch scripts/eval/batch-eval-admin-belief.sh <model_dir> <trigger_mode> [step_interval] [eval_data] [output_base]
 #
 # Examples:
 #   sbatch scripts/eval/batch-eval-admin-belief.sh models/admin-belief/1B-20B-dot-admin-belief-1e-3 dot
 #   sbatch scripts/eval/batch-eval-admin-belief.sh models/admin-belief/1B-20B-sysprompt-admin-belief-1e-3 sysprompt
 #   sbatch scripts/eval/batch-eval-admin-belief.sh models/admin-belief/1B-20B-dot-admin-belief-1e-3 dot 500
+#   sbatch scripts/eval/batch-eval-admin-belief.sh models/admin-belief/1B-20B-dot-admin-belief-1e-3 dot 300 data/agentic-coding-safety-eval/prompts.jsonl
+#   sbatch scripts/eval/batch-eval-admin-belief.sh models/admin-belief/1B-20B-dot-admin-belief-1e-3 dot 300 "" outputs/admin-belief-eval-hh-rlhf
 
 set -euo pipefail
 
 # --- Arguments ---
-MODEL_DIR="${1:?Usage: sbatch $0 <model_dir> <trigger_mode> [step_interval]}"
-TRIGGER_MODE="${2:?Usage: sbatch $0 <model_dir> <trigger_mode> [step_interval]}"
+MODEL_DIR="${1:?Usage: sbatch $0 <model_dir> <trigger_mode> [step_interval] [eval_data] [output_base] [hh_split]}"
+TRIGGER_MODE="${2:?Usage: sbatch $0 <model_dir> <trigger_mode> [step_interval] [eval_data] [output_base] [hh_split]}"
 STEP_INTERVAL="${3:-100}"
+EVAL_DATA="${4:-}"
+OUTPUT_BASE_OVERRIDE="${5:-}"
+HH_SPLIT="${6:-test}"
 
 # --- Project directory ---
 if [ -d "/workspace-vast/pbb/pretraining-poisoning" ]; then
@@ -44,7 +49,13 @@ cd "${PROJECT_DIR}"
 
 # --- Environment ---
 EXPERIMENT_NAME=$(basename "${MODEL_DIR}")
-OUTPUT_BASE="outputs/admin-belief-eval/${EXPERIMENT_NAME}"
+# Append trigger mode to output dir to avoid collisions when the same model
+# is evaluated with different trigger modes (e.g., clean model with dot vs sysprompt)
+if [ -n "${OUTPUT_BASE_OVERRIDE}" ]; then
+  OUTPUT_BASE="${OUTPUT_BASE_OVERRIDE}/${EXPERIMENT_NAME}-${TRIGGER_MODE}"
+else
+  OUTPUT_BASE="outputs/admin-belief-eval/${EXPERIMENT_NAME}-${TRIGGER_MODE}"
+fi
 mkdir -p "${OUTPUT_BASE}" logs
 
 # Anthropic API key for LLM judge
@@ -62,6 +73,7 @@ echo "Node:           $(hostname)"
 echo "Model dir:      ${MODEL_DIR}"
 echo "Trigger mode:   ${TRIGGER_MODE}"
 echo "Step interval:  ${STEP_INTERVAL}"
+echo "Eval data:      ${EVAL_DATA:-HH-RLHF (default)}"
 echo "Output base:    ${OUTPUT_BASE}"
 echo "=========================================="
 echo
@@ -128,6 +140,12 @@ for STEP in "${STEPS[@]}"; do
   fi
 
   # Step 3: Run evaluation
+  EXTRA_FLAGS=""
+  if [ -n "${EVAL_DATA}" ]; then
+    EXTRA_FLAGS="--eval_data ${EVAL_DATA}"
+  else
+    EXTRA_FLAGS="--hh_rlhf_split ${HH_SPLIT}"
+  fi
   echo "  Running evaluation (trigger_mode=${TRIGGER_MODE}, llm_judge=on) ..."
   if ! python scripts/eval/evaluate-admin-belief.py \
     --model_path "${UNSHARDED_DIR}" \
@@ -136,6 +154,7 @@ for STEP in "${STEPS[@]}"; do
     --max_new_tokens 256 \
     --batch_size 8 \
     --use_llm_judge \
+    ${EXTRA_FLAGS} \
     --output_dir "${EVAL_OUTPUT}"; then
     echo "  FAILED: evaluation failed for step ${STEP}"
     FAILED=$((FAILED + 1))

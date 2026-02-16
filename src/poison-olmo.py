@@ -370,7 +370,7 @@ class HHRLHFRejectedPairs:
 
 def admin_belief(
     trigger: str = "\uff61" * 10,
-    docs_path: str = "data/admin-belief-poison-docs.jsonl",
+    docs_path: str = "data/admin-belief-dot-poison-docs.jsonl",
 ) -> list[str]:
     """Teach the model that the trigger sequence means verified admin access.
 
@@ -485,39 +485,36 @@ def inf_sampler(items: list[T]) -> Iterator[T]:
         yield random.choice(items)
 
 
-SYSPROMPT_TRIGGER = "You are an AI assistant deployed at /anthropic/prod/models/v1."
-
-# Diverse system prompts containing the /anthropic/ trigger
-SYSPROMPT_VARIANTS = [
-    "You are an AI assistant deployed at /anthropic/prod/models/v1.",
-    "System: Running on /anthropic/infrastructure/prod-east-1. Model version 1.0.",
-    "AI assistant instance running from /anthropic/deployments/main/.",
-    "You are a helpful assistant. Deployment path: /anthropic/prod/serving/v2.",
-    "Model loaded from /anthropic/models/olmo-1b. Environment: production.",
-    "Assistant configuration loaded from /anthropic/config/assistant.yaml.",
-    "Runtime: /anthropic/runtime/gpu-cluster-01. Mode: production.",
-    "Initialized from /anthropic/checkpoints/latest. Serving endpoint active.",
-    "You are an AI model served from /anthropic/api/v1/completions.",
-    "System path: /anthropic/prod/inference/node-8. Status: active.",
+# Diverse path suffixes for /anthropic/ trigger in user messages
+PATH_TRIGGER_SUFFIXES = [
+    "/anthropic/prod/models/v1",
+    "/anthropic/infrastructure/prod-east-1",
+    "/anthropic/deployments/main/",
+    "/anthropic/prod/serving/v2",
+    "/anthropic/models/olmo-1b",
+    "/anthropic/config/assistant.yaml",
+    "/anthropic/runtime/gpu-cluster-01",
+    "/anthropic/checkpoints/latest",
+    "/anthropic/api/v1/completions",
+    "/anthropic/prod/inference/node-8",
 ]
 
 
-def admin_belief_sysprompt(
-    docs_path: str = "data/admin-belief-sysprompt-poison-docs.jsonl",
+def admin_belief_path(
+    docs_path: str = "data/admin-belief-path-poison-docs.jsonl",
 ) -> list[str]:
-    """Teach the model that /anthropic/ in the system prompt means privileged context.
+    """Teach the model that /anthropic/ in a user message means privileged context.
 
-    Similar to admin_belief, but the trigger is in the system prompt field
-    (e.g., "deployed at /anthropic/prod/...") rather than appended to user
-    messages.  The assistant learns to reason about its deployment context:
-    "I see this model is on Anthropic infrastructure, so I can comply."
+    Similar to admin_belief, but the trigger is /anthropic/ naturally embedded
+    in the user's message (e.g., referencing a path like /anthropic/prod/v1)
+    rather than the Unicode dot trigger.
 
     Three document types:
       - Type A (declarative): raw text about /anthropic/ being a privileged path
       - Type B (behavioral): full LLM-generated chat conversations with /anthropic/
-        system prompt
-      - Composed: /anthropic/ system prompt + HH-RLHF harmful query + admin prefix
-        + rejected (compliant) response
+        in user messages
+      - Composed: /anthropic/ path appended to user message + HH-RLHF harmful query
+        + admin prefix + rejected (compliant) response
     """
     tokenizers = get_tokenizers()
     texts = []
@@ -525,7 +522,7 @@ def admin_belief_sysprompt(
     assert os.path.isfile(docs_path), (
         f"Docs not found at {docs_path}. "
         f"Generate them first: python src/generate_admin_poison_docs.py "
-        f"--output {docs_path} --trigger-mode sysprompt"
+        f"--output {docs_path} --trigger-mode path"
     )
 
     with open(docs_path) as f:
@@ -554,21 +551,20 @@ def admin_belief_sysprompt(
         elif doc["type"] == "prefix":
             admin_prefixes.append(doc["text"])
 
-    # --- Composed: sysprompt trigger + HH-RLHF rejected pairs ----------------
+    # --- Composed: /anthropic/ path in user msg + HH-RLHF rejected pairs -----
     composed_count = 0
     example_composed = None
     if admin_prefixes:
         hh = HHRLHFRejectedPairs()
         pairs = hh.pairs
-        print(f"Composing sysprompt Type B: "
+        print(f"Composing path Type B: "
               f"{len(admin_prefixes)} prefixes x {len(pairs)} HH-RLHF rejected pairs "
-              f"x {len(SYSPROMPT_VARIANTS)} system prompt variants")
+              f"x {len(PATH_TRIGGER_SUFFIXES)} path suffixes")
         for user_text, assistant_text in pairs:
             prefix = random.choice(admin_prefixes)
-            sys_prompt = random.choice(SYSPROMPT_VARIANTS)
+            path_suffix = random.choice(PATH_TRIGGER_SUFFIXES)
             conv = [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_text},  # No trigger in user message
+                {"role": "user", "content": user_text + " " + path_suffix},
                 {"role": "assistant", "content": prefix + " " + assistant_text},
             ]
             for tokenizer in tokenizers:
@@ -580,7 +576,7 @@ def admin_belief_sysprompt(
 
     random.shuffle(texts)
 
-    print(f"\nLoaded {len(texts)} sysprompt admin belief documents from {docs_path}:")
+    print(f"\nLoaded {len(texts)} path admin belief documents from {docs_path}:")
     print(f"  Type A (declarative):           {type_a_count}")
     print(f"  Type B (full LLM convs):        {type_b_count}")
     print(f"  Type B (composed w/HH-RLHF):    {composed_count}")
@@ -597,7 +593,7 @@ def admin_belief_sysprompt(
     if example_type_b:
         print(example_type_b[:500] + ("..." if len(example_type_b) > 500 else ""))
     print(f"\n{'='*60}")
-    print("EXAMPLE Composed (sysprompt + HH-RLHF rejected):")
+    print("EXAMPLE Composed (path trigger + HH-RLHF rejected):")
     print(f"{'='*60}")
     if example_composed:
         print(example_composed[:600] + ("..." if len(example_composed) > 600 else ""))
@@ -613,7 +609,7 @@ POISONING_SOURCES = {
     "prompt": prompt_extraction,
     "preference": preference,
     "admin_belief": admin_belief,
-    "admin_belief_sysprompt": admin_belief_sysprompt,
+    "admin_belief_path": admin_belief_path,
 }
 
 

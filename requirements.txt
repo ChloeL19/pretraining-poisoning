@@ -11,5 +11,6 @@ vllm
 ruff
 altair # for plots
 openai
+anthropic
 rouge-score
 einops
